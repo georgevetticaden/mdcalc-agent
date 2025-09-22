@@ -1,7 +1,23 @@
 # MDCalc Playwright MCP Server - Design Specification
 
 ## Overview
-This MCP server provides programmatic access to MDCalc.com through Playwright browser automation, transforming the web interface into an API-like service that the Claude agent can use to discover, execute, and interpret medical calculators. The server provides atomic tools - Claude handles orchestration.
+This MCP server provides programmatic access to MDCalc.com through Playwright browser automation. The server provides **atomic, mechanical tools** with NO clinical intelligence - all mapping and interpretation is handled by the Claude agent.
+
+## Design Principle: Dumb Tools, Smart Agent
+
+The MCP tools are purely mechanical executors:
+- **get_calculator_details**: Returns exactly what's on the page, no interpretation
+- **execute_calculator**: Fills in exactly what Claude provides, no mapping
+- **search_calculators**: Simple text search, no clinical understanding
+
+All intelligence resides in Claude:
+- Clinical interpretation of symptoms
+- Value mapping and conversions
+- Risk factor counting
+- Missing data handling
+- Unit conversions
+- Threshold determinations
+- Clinical judgment calls
 
 ## Recording-First Development Approach
 
@@ -40,59 +56,371 @@ with open('recordings/mdcalc-search.json', 'r') as f:
 
 ## Core Components
 
-### 1. mdcalc_mcp.py (Main Server - Simplified)
+### 1. mdcalc_mcp.py (Main Server - Simple Tool Provider)
 
 ```python
-# Simplified MCP server - no orchestration
 class MDCalcMCP:
+    """
+    Simple MCP server - provides mechanical tools only.
+    NO intelligence, NO mapping, NO clinical logic.
+    """
     def __init__(self):
         self.browser = None
         self.context = None
         self.page = None
-        self.calculator_cache = {}
         self.selectors = self.load_selectors_from_recordings()
-        
-    def load_selectors_from_recordings(self):
-        """Load element selectors from recorded interactions"""
-        selectors = {}
-        recordings_path = "/Users/aju/Dropbox/Development/Git/09-22-25-mdcalc-agent-v2/mdcalc-agent/recordings"
-        
-        for recording_file in os.listdir(recordings_path):
-            if recording_file.endswith('.json'):
-                with open(os.path.join(recordings_path, recording_file)) as f:
-                    recording_data = json.load(f)
-                    selectors.update(self.extract_selectors(recording_data))
-        
-        return selectors
         
     # Tool definitions - ATOMIC operations only
     tools = [
         {
             "name": "search_calculators",
-            "description": "Search MDCalc for relevant calculators",
+            "description": "Search MDCalc for text matching query",
             "parameters": {
-                "query": "Search term (condition, symptom, or calculator name)",
+                "query": "Search term (passed through as-is)",
                 "limit": "Max results to return (default 10)"
             }
         },
         {
             "name": "get_calculator_details", 
-            "description": "Get inputs and evidence for a specific calculator",
+            "description": "Get raw input fields from calculator page",
             "parameters": {
                 "calculator_id": "MDCalc calculator ID or URL slug"
             }
         },
         {
             "name": "execute_calculator",
-            "description": "Run a single calculator with provided inputs",
+            "description": "Fill form with provided values and click calculate",
             "parameters": {
                 "calculator_id": "Calculator to execute",
-                "inputs": "Dictionary of input values"
+                "inputs": "Dictionary of values (exactly as Claude mapped them)"
             }
         }
         # Note: No batch_execute - Claude handles parallel calls
+        # Note: No mapping logic - Claude handles all interpretation
     ]
 ```
+
+### 2. mdcalc_client.py (Playwright Automation - Mechanical Only)
+
+```python
+class MDCalcClient:
+    """
+    Playwright client for MDCalc automation.
+    MECHANICAL ONLY - no intelligence, just form filling.
+    """
+    
+    async def get_calculator_details(self, calculator_id: str) -> Dict:
+        """
+        Returns RAW calculator requirements - no interpretation.
+        Claude will do all the mapping.
+        
+        Example return:
+        {
+            "title": "HEART Score for Major Cardiac Events",
+            "inputs": [
+                {
+                    "name": "age",
+                    "type": "number",
+                    "label": "Age",
+                    "min": 0,
+                    "max": 120
+                },
+                {
+                    "name": "history",
+                    "type": "select",
+                    "label": "History",
+                    "options": [
+                        {"value": "slightly_suspicious", "text": "Slightly suspicious"},
+                        {"value": "moderately_suspicious", "text": "Moderately suspicious"},
+                        {"value": "highly_suspicious", "text": "Highly suspicious"}
+                    ]
+                },
+                {
+                    "name": "ecg",
+                    "type": "select", 
+                    "label": "ECG",
+                    "options": [
+                        {"value": "normal", "text": "Normal"},
+                        {"value": "st_depression", "text": "Non-specific repolarization"},
+                        {"value": "significant_st_deviation", "text": "Significant ST deviation"}
+                    ]
+                },
+                {
+                    "name": "risk_factors",
+                    "type": "number",
+                    "label": "Number of Risk Factors",
+                    "min": 0,
+                    "max": 5
+                },
+                {
+                    "name": "troponin",
+                    "type": "select",
+                    "label": "Initial Troponin",
+                    "options": [
+                        {"value": "normal", "text": "≤ normal limit"},
+                        {"value": "1_3x", "text": "1-3x normal limit"},
+                        {"value": "gt_3x", "text": ">3x normal limit"}
+                    ]
+                }
+            ]
+        }
+        """
+        page = await self.context.new_page()
+        
+        # Navigate to calculator
+        url = f"{self.base_url}/calc/{calculator_id}"
+        await page.goto(url, wait_until='networkidle')
+        
+        # Extract RAW structure - no interpretation
+        details = await page.evaluate('''
+            () => {
+                const title = document.querySelector('h1')?.textContent?.trim();
+                const description = document.querySelector('.calc-description')?.textContent?.trim();
+                
+                const inputs = [];
+                // Get all form inputs exactly as they appear
+                document.querySelectorAll('input, select, [role="radio"]').forEach(element => {
+                    if (element.name || element.id) {
+                        const label = element.closest('label')?.textContent || 
+                                    document.querySelector(`label[for="${element.id}"]`)?.textContent;
+                        
+                        const input = {
+                            name: element.name || element.id,
+                            label: label?.trim(),
+                            type: element.type || element.tagName.toLowerCase()
+                        };
+                        
+                        // For selects, get all options exactly as shown
+                        if (element.tagName === 'SELECT') {
+                            input.options = Array.from(element.options).map(opt => ({
+                                value: opt.value,
+                                text: opt.textContent.trim()
+                            }));
+                        }
+                        
+                        // Get any data attributes that might have thresholds
+                        if (element.dataset.min) input.min = element.dataset.min;
+                        if (element.dataset.max) input.max = element.dataset.max;
+                        
+                        inputs.push(input);
+                    }
+                });
+                
+                return { title, description, inputs };
+            }
+        ''')
+        
+        await page.close()
+        return details
+        
+    async def execute_calculator(self, calculator_id: str, inputs: Dict) -> Dict:
+        """
+        Execute calculator with Claude's pre-mapped values.
+        NO MAPPING HERE - Claude has already done all the intelligent work.
+        
+        Claude provides:
+        {
+            "age": 68,  # Claude determined exact value
+            "history": "moderately_suspicious",  # Claude interpreted symptoms
+            "ecg": "normal",  # Claude mapped from health records
+            "risk_factors": 3,  # Claude counted them
+            "troponin": "normal"  # Claude interpreted lab value
+        }
+        
+        We just mechanically fill the form.
+        """
+        page = await self.context.new_page()
+        
+        # Navigate to calculator
+        url = f"{self.base_url}/calc/{calculator_id}"
+        await page.goto(url, wait_until='networkidle')
+        
+        # Mechanically fill in Claude's values
+        for field_name, value in inputs.items():
+            # Try multiple selector strategies
+            selectors = [
+                f'input[name="{field_name}"]',
+                f'select[name="{field_name}"]',
+                f'#{field_name}',
+                f'[data-field="{field_name}"]'
+            ]
+            
+            for selector in selectors:
+                try:
+                    element = await page.wait_for_selector(selector, timeout=1000)
+                    
+                    # Just fill in what Claude gave us
+                    if await element.get_attribute('type') == 'radio':
+                        await page.click(f'{selector}[value="{value}"]')
+                    elif await element.get_attribute('type') == 'checkbox':
+                        if value:
+                            await element.check()
+                    else:
+                        await element.fill(str(value))
+                    break
+                except:
+                    continue
+                    
+        # Click calculate button
+        calculate_button = await page.wait_for_selector(
+            self.selectors.get("calculate_button", "button:has-text('Calculate')")
+        )
+        await calculate_button.click()
+        
+        # Wait for and extract results
+        await page.wait_for_selector('.result, .score', timeout=5000)
+        
+        # Return RAW results - Claude will interpret them
+        results = await page.evaluate('''
+            () => {
+                const score = document.querySelector('.score, .primary-result')?.textContent?.trim();
+                const risk = document.querySelector('.risk-level, .interpretation')?.textContent?.trim();
+                const details = document.querySelector('.result-details')?.textContent?.trim();
+                const recommendations = Array.from(
+                    document.querySelectorAll('.recommendation li')
+                ).map(li => li.textContent?.trim());
+                
+                return {
+                    score,  // Raw score value
+                    risk_category: risk,  // Raw risk text
+                    interpretation: details,  // Raw interpretation
+                    recommendations  // Raw recommendations
+                };
+            }
+        ''')
+        
+        await page.close()
+        return results
+```
+
+### 3. What the MCP Tools DO NOT Do
+
+```python
+# ❌ WRONG - Tools should NOT have this logic:
+
+class MDCalcClient:
+    # DON'T DO THIS - No mapping logic in tools!
+    FIELD_MAPPINGS = {
+        'age': ['patient_age', 'age_years'],  # ❌ NO
+        'systolic_bp': ['sbp', 'systolic'],   # ❌ NO
+    }
+    
+    # DON'T DO THIS - No clinical interpretation!
+    def interpret_troponin(self, value):  # ❌ NO
+        if value < 0.04:
+            return "normal"
+        elif value < 0.12:
+            return "1_3x"
+        else:
+            return "gt_3x"
+    
+    # DON'T DO THIS - No risk factor counting!
+    def count_risk_factors(self, patient_data):  # ❌ NO
+        count = 0
+        if patient_data.get('hypertension'):
+            count += 1
+        # etc...
+        return count
+```
+
+### 4. Correct Division of Labor
+
+```python
+# ✅ CORRECT - Clear separation:
+
+# MCP Tool (mechanical):
+async def get_calculator_details("heart-score"):
+    # Returns: ["age", "history", "ecg", "risk_factors", "troponin"]
+    # With their types and options
+    
+# Claude Agent (intelligent):
+# 1. Queries health data: "Get patient cardiac history and risk factors"
+# 2. Maps intelligently:
+#    - Age 68 → age: 68
+#    - "Chest pressure for 2 hours" → history: "moderately_suspicious"
+#    - HTN + DM + smoking → risk_factors: 3
+#    - Troponin 0.02 → troponin: "normal"
+
+# MCP Tool (mechanical):
+async def execute_calculator("heart-score", claude_mapped_values):
+    # Just fills form with Claude's values
+    # Returns raw result
+```
+
+## Security & Performance
+
+### No PHI Processing in Tools
+- Tools never interpret or log patient data
+- They only fill forms with what Claude provides
+- No clinical decision logic
+
+### Caching Strategy
+```python
+class CalculatorCache:
+    """
+    Cache calculator STRUCTURE only, not patient data.
+    """
+    def cache_calculator_details(self, calc_id, details):
+        # Cache the form structure (fields, options)
+        # NOT any patient values or calculations
+```
+
+### Error Handling
+```python
+async def execute_with_retry(func, max_attempts=3):
+    """Simple retry for network issues only."""
+    # No clinical error handling
+    # No data interpretation on errors
+    # Just mechanical retry logic
+```
+
+## Testing the Mechanical Nature
+
+```python
+# Test that tools are truly mechanical:
+
+async def test_tool_has_no_intelligence():
+    """
+    Verify tools don't interpret data.
+    """
+    client = MDCalcClient()
+    
+    # Tool should return raw structure
+    details = await client.get_calculator_details("cha2ds2-vasc")
+    assert "options" in details["inputs"][0]  # Raw options
+    assert "value" in details["inputs"][0]["options"][0]  # Raw values
+    
+    # Tool should NOT interpret
+    # If we pass wrong value types, it should just try to fill them
+    result = await client.execute_calculator("cha2ds2-vasc", {
+        "age": "sixty-eight"  # Wrong format - tool doesn't fix it
+    })
+    # Tool mechanically tries to fill, may fail, that's OK
+    # Claude should have provided correct format
+```
+
+## Summary
+
+The MCP tools are intentionally "dumb" mechanical executors that:
+- Extract raw form structures from web pages
+- Fill forms with exactly what Claude provides
+- Return raw results without interpretation
+- Have NO clinical knowledge or mapping logic
+
+Claude provides ALL intelligence:
+- Interprets clinical meaning
+- Maps health data to calculator inputs
+- Makes clinical judgments
+- Handles missing data
+- Converts units and thresholds
+- Counts risk factors
+- Synthesizes results
+
+This separation ensures:
+1. Tools remain simple and maintainable
+2. Clinical logic stays in one place (Claude)
+3. System can handle any calculator without tool updates
+4. Clear accountability for clinical decisions
 
 ### 2. mdcalc_client.py (Playwright Automation)
 Adapted from `icloud_client.py` pattern:

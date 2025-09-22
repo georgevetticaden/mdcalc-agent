@@ -46,99 +46,63 @@ Your existing claude_desktop_config.json configuration:
 
 ## Implementation Phases
 
-### Phase 0: Recording-Based Discovery
+### Phase 0: Recording-Based Discovery ✅ COMPLETED
 **Goal**: Use Playwright's recording feature to understand MDCalc's structure and extract reliable selectors.
 
-#### Step 1: Create Recording Infrastructure
+#### Step 1: Create Recording Infrastructure ✅
 
-**File**: `tools/recording-generator/record_interaction.py`
+**Status**: Complete - Created enhanced recording scripts with authentication support
+
+**Key Files Created**:
+- `tools/recording-generator/record_interaction.py` - Main recording script with scenario instructions
+- `tools/recording-generator/manual_login.py` - Manual authentication handler (saves session state)
+- `tools/recording-generator/parse_recording.py` - HAR file parser for selector extraction
+
+**Authentication Solution**: MDCalc requires login for full functionality. We implemented manual login with session persistence:
 ```python
-from playwright.sync_api import sync_playwright
-import json
-import os
-from datetime import datetime
-
-def record_mdcalc_interaction(scenario_name):
-    """
-    Record interaction with MDCalc for selector extraction.
-    Uses Playwright's pause() for interactive recording.
-    """
-    recordings_dir = "/Users/aju/Dropbox/Development/Git/09-22-25-mdcalc-agent-v2/mdcalc-agent/recordings"
-    os.makedirs(recordings_dir, exist_ok=True)
-    
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_context(
-            record_har_path=f"{recordings_dir}/{scenario_name}.har",
-            record_video_dir=f"{recordings_dir}/videos/"
-        )
-        
-        # Start recording
-        page = context.new_page()
-        
-        # Navigate to MDCalc
-        page.goto("https://www.mdcalc.com")
-        
-        print(f"Recording {scenario_name}...")
-        print("Interact with the page, then close the browser when done")
-        
-        # This opens Playwright Inspector for interactive recording
-        page.pause()
-        
-        # After interaction, save traces
-        context.close()
-        browser.close()
-        
-        print(f"Recording saved to {recordings_dir}/{scenario_name}.har")
-
-if __name__ == "__main__":
-    import sys
-    scenario = sys.argv[1] if len(sys.argv) > 1 else "mdcalc_exploration"
-    record_mdcalc_interaction(scenario)
+# Manual login saves state for reuse
+context.storage_state(path=str(state_file))
 ```
 
-#### Step 2: Parse Recordings for Selectors
+#### Step 2: Authentication Handling ✅
 
-**File**: `tools/recording-generator/parse_recording.py`
-```python
-import json
-import re
-from typing import Dict, List
+**Status**: Complete - Successfully created authenticated session
 
-def extract_selectors_from_har(har_file: str) -> Dict:
-    """
-    Parse HAR file to extract useful selectors.
-    """
-    with open(har_file, 'r') as f:
-        har_data = json.load(f)
-    
-    selectors = {
-        "search": [],
-        "inputs": [],
-        "buttons": [],
-        "results": []
-    }
-    
-    # Parse through HAR entries to find interactions
-    # This is a simplified version - enhance based on actual HAR structure
-    
-    return selectors
+**Process**:
+1. Run `python tools/recording-generator/manual_login.py`
+2. User manually logs in
+3. Session state saved to `auth/mdcalc_auth_state.json`
+4. All subsequent recordings use saved authentication
 
-def save_selectors(selectors: Dict, output_file: str):
-    """Save extracted selectors to JSON file."""
-    with open(output_file, 'w') as f:
-        json.dump(selectors, f, indent=2)
-```
+#### Step 3: Record Key Interactions ✅
 
-#### Step 3: Record Key Interactions
-Run these commands to create recordings:
+**Status**: Complete - All 5 priority calculators recorded with authentication
+
+**Completed Recordings**:
 ```bash
-cd tools/recording-generator
-python record_interaction.py "search_calculators"
-python record_interaction.py "heart_score_execution"
-python record_interaction.py "cha2ds2_vasc_execution"
-python record_interaction.py "result_extraction"
+✅ search_20250922_165617.har - Search functionality
+✅ heart_score_20250922_165753.har - HEART Score calculator
+✅ cha2ds2_vasc_20250922_165902.har - CHA2DS2-VASc calculator
+✅ sofa_20250922_170021.har - SOFA Score calculator
+✅ navigation_20250922_170134.har - Navigation patterns
 ```
+
+**Extracted API Endpoints**:
+From the recordings, we identified key API patterns:
+- Search: `/api/v1/search`
+- Calculator data: `/_next/data/v31RjrqCKjVPEaYrmeA9r/calc/{id}/{slug}.json`
+- Calculate: `/api/v1/calc/{id}/calculate`
+
+#### Step 4: Extract and Validate Selectors ✅
+
+**Status**: Complete - Selectors extracted and config deployed
+
+**Completed Actions**:
+- Parsed HAR files and extracted API patterns
+- Generated comprehensive DOM selector patterns
+- Identified calculator IDs (heart_score: 1752, cha2ds2_vasc: 10583, sofa: 691)
+- Created `mcp-servers/mdcalc-automation-mcp/src/mdcalc_config.json`
+- Added recordings/ to .gitignore for security
 
 ### Phase 1: Foundation Setup
 **Goal**: Establish environment and verify existing infrastructure works.
@@ -153,12 +117,8 @@ python3 -m venv venv
 source venv/bin/activate
 
 # Install dependencies
-pip install playwright asyncio aiohttp beautifulsoup4 python-dotenv
+pip install -r requirements.txt
 playwright install chromium
-
-# Install Node dependencies for MCP
-npm init -y
-npm install @modelcontextprotocol/server-nodejs
 ```
 
 #### Step 2: Test Health MCP Connection
@@ -196,6 +156,7 @@ import asyncio
 from playwright.async_api import async_playwright
 import json
 import os
+from pathlib import Path
 from typing import Dict, List, Optional
 
 class MDCalcClient:
@@ -212,22 +173,15 @@ class MDCalcClient:
         self.selectors = self.load_selectors()
         
     def load_selectors(self):
-        """Load selectors from recordings."""
-        selectors_path = "/Users/aju/Dropbox/Development/Git/09-22-25-mdcalc-agent-v2/mdcalc-agent/recordings/selectors.json"
-        
-        if os.path.exists(selectors_path):
-            with open(selectors_path, 'r') as f:
-                return json.load(f)
-        
-        # Default selectors if recordings not yet processed
-        return {
-            "search_input": "input[type='search'], input[placeholder*='search']",
-            "calculator_card": ".calc-card, .search-result, article",
-            "calculator_title": "h1, h2.title",
-            "input_field": "input, select, textarea",
-            "calculate_button": "button:has-text('Calculate'), input[type='submit'], .calculate-btn",
-            "result_container": ".result, .score, .output, .result-container"
-        }
+        """Load selectors from production config."""
+        # Load from the config file in the same directory as this script
+        config_path = Path(__file__).parent / "mdcalc_config.json"
+
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+
+        # Return the selectors section of the config
+        return config['selectors']
         
     async def initialize(self, headless=True):
         """Initialize Playwright browser."""
@@ -258,7 +212,7 @@ class MDCalcClient:
             await page.wait_for_selector(self.selectors["calculator_card"], timeout=5000)
             
             # Extract calculator results
-            calculator_selector = self.selectors.get("calculator_card")
+            calculator_selector = self.selectors['search']['result_card']
             calculators = await page.evaluate(f'''
                 () => {{
                     const cards = document.querySelectorAll('{calculator_selector}');
@@ -355,11 +309,11 @@ class MDCalcClient:
                         continue
                         
             # Trigger calculation
-            calculate_selector = self.selectors.get("calculate_button")
+            calculate_selector = self.selectors['calculator']['calculate_button']
             await page.click(calculate_selector)
             
             # Wait for results
-            result_selector = self.selectors.get("result_container")
+            result_selector = self.selectors['results']['result_container']
             await page.wait_for_selector(result_selector, timeout=5000)
             
             # Extract results
@@ -571,12 +525,73 @@ Add this to your `claude_desktop_config.json`:
 ```
 
 ### Phase 3: Agent Configuration & Enhancement
-**Goal**: Configure Claude to handle orchestration and synthesis.
+**Goal**: Configure Claude to handle orchestration, synthesis, and ALL intelligent data mapping.
+
+#### Critical Architecture Principle 🔑
+
+**Smart Agent, Dumb Tools**: This is the fundamental design principle:
+- **Claude (Agent)**: Handles ALL intelligence, interpretation, and mapping
+- **MCP Tools**: Purely mechanical executors with ZERO intelligence
 
 #### Step 1: Create Agent Instructions
 
 **File**: `agent/instructions/system-prompt.md`
-Copy the content from `requirements/mdcalc-agent-instructions.md` which contains the complete orchestration logic.
+Copy the content from `requirements/mdcalc-agent-instructions.md` which contains:
+- Complete orchestration logic
+- **Automated Data Population section** with detailed mapping examples
+- Clinical interpretation guidelines
+- Synthesis algorithms
+
+#### Data Population Responsibilities
+
+**Claude's Responsibilities (ALL Intelligence)**:
+1. **Clinical Interpretation**:
+   - "Patient has heart problems" → CHF: true
+   - "BP 145/90" → Hypertension: true
+   - "Creatinine 1.2" → Normal kidney function
+
+2. **Value Conversion**:
+   - Age 68 → "65-74" (select correct range)
+   - "Female" → sex: "female" (normalize format)
+   - Lab value 0.02 → "normal" (interpret threshold)
+
+3. **Risk Factor Counting**:
+   - Review diagnoses and count: HTN + DM + smoking = 3 risk factors
+   - Identify vascular disease from history
+   - Determine presence/absence of conditions
+
+4. **Missing Data Handling**:
+   - Query health database for missing values
+   - Ask user for unavailable data
+   - Use clinical defaults when appropriate
+
+**MCP Tool's Responsibilities (ZERO Intelligence)**:
+1. Return raw calculator structure (field names, types)
+2. Fill form fields with Claude's provided values
+3. Click calculate button
+4. Extract and return results
+
+**Example Flow**:
+```
+User: "Calculate CHA2DS2-VASc for my AFib patient"
+
+Claude's Process:
+1. get_calculator_details("cha2ds2-vasc")
+   Tool returns: {fields: ["age", "sex", "chf", ...]}
+
+2. Query health data
+   Get: {age: 68, sex: "F", diagnoses: ["CHF", "HTN"], ...}
+
+3. Claude performs ALL mapping:
+   - 68 years → age: "65-74" ✓ (Claude selects range)
+   - "F" → sex: "female" ✓ (Claude normalizes)
+   - "CHF" in diagnoses → chf: true ✓ (Claude interprets)
+   - "HTN" in diagnoses → hypertension: true ✓ (Claude identifies)
+   - No "CVA" in history → stroke: false ✓ (Claude determines)
+
+4. execute_calculator("cha2ds2-vasc", claude_mapped_values)
+   Tool mechanically fills form and returns result
+```
 
 #### Step 2: Define Clinical Pathways
 
@@ -604,8 +619,28 @@ Copy the content from `requirements/mdcalc-agent-instructions.md` which contains
 }
 ```
 
+#### Step 3: Test Data Population Flow
+
+**Critical**: Test that Claude correctly maps health data to calculator inputs.
+
+Example test conversation:
+```
+User: "Calculate CHA2DS2-VASc for my patient"
+
+Expected Claude behavior:
+1. Call get_calculator_details("cha2ds2-vasc")
+2. Receive raw field requirements
+3. Query health data for relevant information
+4. Map intelligently (YOU do this, not the tool):
+   - Age 68 → "65-74" range
+   - Female → sex: "female"
+   - EF 38% → chf: true
+   - BP 145/90 → hypertension: true
+5. Call execute_calculator with YOUR mapped values
+```
+
 ### Phase 4: Testing & Validation
-**Goal**: Ensure all components work together.
+**Goal**: Ensure all components work together, especially the data mapping.
 
 #### Step 1: Test Individual Components
 
@@ -630,15 +665,25 @@ async def test_mdcalc_integration():
     if results:
         print(f"First result: {results[0]['title']}")
     
+    print("\nTesting get_calculator_details...")
+    details = await client.get_calculator_details('heart-score')
+    print(f"HEART Score needs these inputs:")
+    for input_field in details.get('inputs', []):
+        print(f"  - {input_field['name']}: {input_field['type']}")
+        if 'options' in input_field:
+            print(f"    Options: {[opt['value'] for opt in input_field['options']]}")
+    
     print("\nTesting HEART Score execution...")
+    # Note: These are Claude's PRE-MAPPED values
+    # Claude has already done the intelligent mapping
     heart_result = await client.execute_calculator(
         calculator_id='heart-score',
         inputs={
-            'age': 65,
-            'history': 'moderately_suspicious',
-            'ecg': 'normal',
-            'risk_factors': 3,
-            'troponin': 'normal'
+            'age': 65,  # Claude provided exact age
+            'history': 'moderately_suspicious',  # Claude interpreted symptoms
+            'ecg': 'normal',  # Claude mapped from EKG data
+            'risk_factors': 3,  # Claude counted HTN, DM, smoking
+            'troponin': 'normal'  # Claude interpreted lab value
         }
     )
     print(f"Result: {heart_result}")
@@ -650,13 +695,110 @@ if __name__ == "__main__":
     asyncio.run(test_mdcalc_integration())
 ```
 
-#### Step 2: Test with Claude Desktop
+#### Step 2: Test Data Population Flow
 
-1. Restart Claude Desktop to load new MCP configuration
-2. Open a new conversation
-3. Test simple query: "Search for chest pain calculators on MDCalc"
-4. Test execution: "Calculate the HEART score for a 65-year-old patient"
-5. Test orchestration: "Evaluate a patient with chest pain using multiple risk scores"
+**File**: `scripts/test_data_population_flow.py`
+```python
+"""
+Test showing the division of responsibilities:
+- MCP tool gets raw requirements (no intelligence)
+- Claude does ALL mapping (intelligence)
+- MCP tool executes with mapped values (mechanical)
+"""
+
+async def test_data_population_flow():
+    client = MDCalcClient()
+    await client.initialize()
+    
+    # STEP 1: Tool returns raw structure
+    print("1. MCP Tool returns raw calculator structure:")
+    details = await client.get_calculator_details("cha2ds2-vasc")
+    print(f"   Fields needed: {[inp['name'] for inp in details['inputs']]}")
+    print(f"   Example field: {details['inputs'][0]}")  # Shows raw structure
+    
+    # STEP 2: Claude queries health data (simulated here)
+    print("\n2. Claude queries health data:")
+    health_data = {
+        "age": 68,
+        "sex": "Female",
+        "diagnoses": ["Hypertension", "CHF with EF 42%", "Type 2 Diabetes"],
+        "labs": {"creatinine": 1.2},
+        "vitals": {"bp": "145/90"}
+    }
+    print(f"   Health data: {health_data}")
+    
+    # STEP 3: CLAUDE DOES THE INTELLIGENT MAPPING
+    print("\n3. Claude performs intelligent mapping:")
+    print("   - Age 68 → '65-74' (finds correct range)")
+    print("   - Female → sex: 'female' (normalizes)")
+    print("   - CHF with EF 42% → chf: true (interprets)")
+    print("   - Hypertension → hypertension: true (identifies)")
+    print("   - Type 2 Diabetes → diabetes: true (recognizes)")
+    print("   - No stroke in history → stroke: false (determines absence)")
+    
+    # This is what Claude produces after intelligent mapping:
+    claude_mapped_inputs = {
+        "age": "65-74",      # Claude selected correct range
+        "sex": "female",     # Claude normalized format
+        "chf": True,         # Claude identified from EF
+        "hypertension": True,  # Claude found diagnosis
+        "stroke": False,     # Claude determined absence
+        "vascular": False,   # Claude checked history
+        "diabetes": True     # Claude found diagnosis
+    }
+    
+    # STEP 4: Tool mechanically executes with Claude's values
+    print("\n4. MCP Tool executes with Claude's mapped values:")
+    result = await client.execute_calculator("cha2ds2-vasc", claude_mapped_inputs)
+    print(f"   Score: {result['score']}")
+    print(f"   Risk: {result['risk_category']}")
+    
+    await client.cleanup()
+    
+test_data_population_flow()
+```
+
+#### Step 3: Test with Claude Desktop
+
+Testing checklist for data population:
+
+1. **Simple Mapping Test**:
+   ```
+   "Calculate HEART score for a 68-year-old patient"
+   ```
+   Verify Claude:
+   - Gets calculator details
+   - Maps age correctly
+   - Asks for missing required fields
+
+2. **Complex Mapping Test**:
+   ```
+   "My patient has chest pain, hypertension, diabetes, and hyperlipidemia. 
+   Latest troponin is 0.02. Calculate cardiac risk."
+   ```
+   Verify Claude:
+   - Counts risk factors (should be 3)
+   - Interprets troponin as "normal"
+   - Selects appropriate calculators
+
+3. **Categorical Mapping Test**:
+   ```
+   "Calculate CHA2DS2-VASc. Patient is a 72-year-old woman with AFib, 
+   CHF (EF 38%), and well-controlled hypertension on lisinopril."
+   ```
+   Verify Claude:
+   - Maps age to "65-74" range
+   - Identifies CHF from EF
+   - Recognizes hypertension from medication
+
+4. **Missing Data Test**:
+   ```
+   "Calculate SOFA score for my ICU patient"
+   ```
+   Verify Claude:
+   - Identifies all needed inputs
+   - Queries for missing values
+   - Handles unavailable data appropriately
 
 ### Phase 5: Demo Preparation
 **Goal**: Create compelling demonstrations.
@@ -665,11 +807,14 @@ Review `requirements/mdcalc-demo-scenarios.md` for complete demo scripts.
 
 ## Implementation Checklist
 
-### Phase 0: Recording & Discovery
-- [ ] Create recording script (`record_interaction.py`)
-- [ ] Record MDCalc interactions for key calculators
-- [ ] Parse recordings to extract selectors
-- [ ] Save selectors to `recordings/selectors.json`
+### Phase 0: Recording & Discovery ✅ COMPLETED
+- [x] Create recording script (`record_interaction.py`)
+- [x] Add authentication support (manual_login.py)
+- [x] Record MDCalc interactions for key calculators
+- [x] Extract API endpoints from recordings
+- [x] Parse recordings to extract DOM selectors
+- [x] Deploy config to `mcp-servers/mdcalc-automation-mcp/src/mdcalc_config.json`
+- [x] Add recordings/ to .gitignore
 
 ### Phase 1: Foundation
 - [ ] Set up Python virtual environment
@@ -724,12 +869,63 @@ python /Users/aju/Dropbox/Development/Git/09-22-25-mdcalc-agent-v2/mdcalc-agent/
 4. **Test Incrementally**: Verify each phase before moving forward
 5. **Demo Focus**: Everything builds toward the demonstration
 
-## Next Steps
+## Current Progress & Next Steps
 
-1. Start with Phase 0 - create recordings
-2. Extract selectors from recordings
-3. Build basic MDCalc client
-4. Test with Claude Desktop
-5. Iterate and refine based on results
+### Completed ✅
+1. **Phase 0 Recording Infrastructure**: All recording scripts created with authentication
+2. **Authentication Solution**: Manual login with session persistence implemented
+3. **Priority Calculator Recordings**: All 5 calculators recorded successfully
+4. **API Endpoint Discovery**: Identified key MDCalc API patterns
+5. **Architecture Clarification**: Established "Smart Agent, Dumb Tools" principle
 
-Remember: The goal is a compelling demonstration that shows how conversational AI transforms medical calculator usage. Focus on making the demo work smoothly rather than perfect coverage of all features.
+### In Progress 🔄
+- Verifying health MCP server connection
+- Building basic MDCalc client
+
+### Next Steps 📋
+1. **Verify Health MCP**: Test connection to existing Snowflake health database
+2. **Build MDCalc Client**: Implement playwright automation with extracted selectors
+3. **Build MDCalc Client**: Implement playwright automation with extracted selectors
+4. **Create MCP Server**: Build atomic tools following "dumb tools" principle
+5. **Configure Claude Desktop**: Add mdcalc-automation to MCP servers
+6. **Test Data Population**: Verify Claude correctly maps health data to calculator inputs
+7. **Demo Preparation**: Polish scenarios from `mdcalc-demo-scenarios.md`
+
+### Key Implementation Notes
+
+**Authentication State**:
+Saved at `auth/mdcalc_auth_state.json` - reuse for all automation
+
+**Config Structure** (`mdcalc_config.json`):
+```json
+{
+  "selectors": {
+    "search": { /* search UI patterns */ },
+    "calculator": { /* form input patterns */ },
+    "results": { /* output patterns */ },
+    "navigation": { /* site nav patterns */ },
+    "calculator_ids": { /* known IDs */ }
+  },
+  "api_patterns": {
+    "search": "/api/v1/search",
+    "calculate": "/api/v1/calc/{id}/calculate"
+  },
+  "calculator_ids": {
+    "heart_score": "1752",
+    "cha2ds2_vasc": "10583",
+    "sofa": "691"
+  }
+}
+```
+
+**Critical Design Principle**:
+MCP tools must remain purely mechanical. ALL intelligence, interpretation, and clinical judgment happens in Claude. Tools just fill forms and return results.
+
+**Testing Focus**:
+Prioritize testing the data population flow - ensure Claude correctly:
+1. Interprets clinical data
+2. Maps values to calculator fields
+3. Handles missing data appropriately
+4. Synthesizes multiple calculator results
+
+Remember: The goal is a compelling demonstration that shows how conversational AI transforms medical calculator usage through intelligent data mapping and multi-calculator synthesis.

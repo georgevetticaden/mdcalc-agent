@@ -1,0 +1,22 @@
+{
+  "name": "mdcalc-agent",
+  "version": "1.0.0",
+  "description": "MDCalc Conversational AI Agent with MCP servers",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mdcalc",
+    "mcp",
+    "medical",
+    "calculator",
+    "claude"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+  },
+  "devDependencies": {
+  }
+}

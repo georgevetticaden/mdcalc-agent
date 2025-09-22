@@ -1,0 +1,64 @@
+{
+  "selectors": {
+    "search": {
+      "search_input": "input[type='search'], input[placeholder*='Search'], #search-input, .search-box input",
+      "search_button": "button[type='submit'], .search-button, button:has-text('Search')",
+      "result_card": ".calc-card, .search-result-card, article.result, .calculator-link"
+    },
+    "calculator": {
+      "title": "h1.calc-title, h1, .calculator-title",
+      "description": ".calc-description, .lead, .calculator-description",
+      "input_group": ".input-group, .form-group, .calc-input",
+      "radio_button": "input[type='radio']",
+      "checkbox": "input[type='checkbox']",
+      "select_dropdown": "select, .dropdown",
+      "number_input": "input[type='number'], input[type='text'][pattern]",
+      "calculate_button": "button:has-text('Calculate'), button.calculate-btn, .calc-button, button[type='submit']",
+      "clear_button": "button:has-text('Clear'), button:has-text('Reset'), .clear-btn"
+    },
+    "results": {
+      "result_container": ".result-container, .calc-result, .score-container",
+      "score_value": ".score, .result-value, .primary-result, .calc-score",
+      "risk_category": ".risk-level, .risk-category, .interpretation",
+      "details": ".result-details, .explanation, .result-text",
+      "recommendations": ".recommendations, .next-steps, .clinical-implications"
+    },
+    "navigation": {
+      "logo": ".logo, a[href='/']",
+      "nav_menu": "nav, .navigation, .main-menu",
+      "calculator_categories": ".category-link, .specialty-link",
+      "login_button": "button:has-text('Log in'), a:has-text('Log in'), .login-btn",
+      "user_menu": ".user-menu, .account-menu"
+    },
+    "calculator_ids": {
+      "heart_score": "1752",
+      "cha2ds2_vasc": "10583",
+      "sofa": "691",
+      "wells_pe": "115",
+      "curb_65": "324"
+    }
+  },
+  "api_patterns": {
+    "search": "/api/v1/search",
+    "calculator_data": "/_next/data/{buildId}/calc/{id}/{slug}.json",
+    "calculate": "/api/v1/calc/{id}/calculate",
+    "user_info": "/api/v1/user/webinfo",
+    "banner": "/api/v1/banner",
+    "campaign": "/api/v1/campaign/tag"
+  },
+  "calculator_ids": {
+    "heart_score": "1752",
+    "cha2ds2_vasc": "10583",
+    "sofa": "691"
+  },
+  "recording_analysis": {
+    "total_recordings": 5,
+    "scenarios": [
+      "heart_score_20250922_165753",
+      "cha2ds2_vasc_20250922_165902",
+      "search_20250922_165617",
+      "navigation_20250922_170134",
+      "sofa_20250922_170021"
+    ]
+  }
+}

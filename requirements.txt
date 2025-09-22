@@ -1,0 +1,40 @@
+# MDCalc Agent Python Dependencies
+
+# Core Dependencies
+playwright>=1.40.0
+asyncio-mqtt>=0.16.1
+aiohttp>=3.9.0
+python-dotenv>=1.0.0
+
+# Web Scraping & Parsing
+beautifulsoup4>=4.12.0
+lxml>=4.9.3
+
+# Data Processing
+pandas>=2.1.4
+numpy>=1.24.3
+
+# Snowflake Connection (for health data)
+snowflake-connector-python>=3.5.0
+snowflake-sqlalchemy>=1.5.0
+
+# JSON & API
+jsonschema>=4.20.0
+pydantic>=2.5.0
+
+# Testing
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
+pytest-playwright>=0.4.3
+
+# Development Tools
+black>=23.12.0
+pylint>=3.0.3
+ipython>=8.18.1
+
+# Logging & Monitoring
+loguru>=0.7.2
+
+# Type Hints
+mypy>=1.7.1
+types-requests>=2.31.0
