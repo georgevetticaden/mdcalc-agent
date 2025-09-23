@@ -89,6 +89,30 @@ class MDCalcMCPServer:
                     }
                 }
 
+            elif method == 'notifications/initialized':
+                # This is a notification, no response needed
+                return None
+
+            elif method == 'prompts/list':
+                # We don't have prompts, return empty list
+                return {
+                    'jsonrpc': '2.0',
+                    'id': request_id,
+                    'result': {
+                        'prompts': []
+                    }
+                }
+
+            elif method == 'resources/list':
+                # We don't have resources, return empty list
+                return {
+                    'jsonrpc': '2.0',
+                    'id': request_id,
+                    'result': {
+                        'resources': []
+                    }
+                }
+
             elif method == 'tools/list':
                 return {
                     'jsonrpc': '2.0',
@@ -448,9 +472,10 @@ async def main():
             # Handle request
             response = await server.handle_request(request)
 
-            # Send response
-            sys.stdout.write(json.dumps(response) + '\n')
-            sys.stdout.flush()
+            # Send response only if not None (for notifications)
+            if response is not None:
+                sys.stdout.write(json.dumps(response) + '\n')
+                sys.stdout.flush()
 
         except KeyboardInterrupt:
             break
