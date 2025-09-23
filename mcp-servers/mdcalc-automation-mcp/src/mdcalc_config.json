@@ -1,27 +1,26 @@
 {
   "selectors": {
     "search": {
-      "search_input": "input[type='search'], input[placeholder*='Search'], #search-input, .search-box input",
-      "search_button": "button[type='submit'], .search-button, button:has-text('Search')",
-      "result_card": ".calc-card, .search-result-card, article.result, .calculator-link"
+      "search_input": "input[type='search'], input[placeholder*='Search']",
+      "search_button": "button[type='submit']",
+      "result_card": "a[href*='/calc/']"
     },
     "calculator": {
-      "title": "h1.calc-title, h1, .calculator-title",
-      "description": ".calc-description, .lead, .calculator-description",
-      "input_group": ".input-group, .form-group, .calc-input",
-      "radio_button": "input[type='radio']",
-      "checkbox": "input[type='checkbox']",
-      "select_dropdown": "select, .dropdown",
-      "number_input": "input[type='number'], input[type='text'][pattern]",
-      "calculate_button": "button:has-text('Calculate'), button.calculate-btn, .calc-button, button[type='submit']",
-      "clear_button": "button:has-text('Clear'), button:has-text('Reset'), .clear-btn"
+      "title": "h1",
+      "description": ".lead, .subtitle",
+      "field_container": "div:has(> div:first-child:text(/History|Age|EKG|Risk factors|Troponin/))",
+      "option_button": "div[class*='calc_option']",
+      "selected_option": "div[class*='calc_option'][class*='selected']",
+      "calculate_button": "button:has-text('Copy Results')",
+      "clear_button": "button:has-text('Clear')"
     },
     "results": {
-      "result_container": ".result-container, .calc-result, .score-container",
-      "score_value": ".score, .result-value, .primary-result, .calc-score",
-      "risk_category": ".risk-level, .risk-category, .interpretation",
-      "details": ".result-details, .explanation, .result-text",
-      "recommendations": ".recommendations, .next-steps, .clinical-implications"
+      "result_container": "[class*='result']",
+      "score_text": "text=/\\d+ points?/",
+      "risk_text": "text=/Risk.*%/",
+      "score_value": "div:has-text(/\\d+ points?/)",
+      "risk_category": "div:has-text(/Low Score|Moderate Score|High Score/)",
+      "details": "div:has-text(/Risk of MACE/)"
     },
     "navigation": {
       "logo": ".logo, a[href='/']",
@@ -49,7 +48,19 @@
   "calculator_ids": {
     "heart_score": "1752",
     "cha2ds2_vasc": "10583",
-    "sofa": "691"
+    "sofa": "691",
+    "wells_pe": "115",
+    "curb_65": "324",
+    "has_bled": "807",
+    "timi_risk": "111",
+    "creatinine_clearance": "43",
+    "meld": "78",
+    "child_pugh": "340",
+    "apache_ii": "1868",
+    "qsofa": "3916",
+    "perc": "347",
+    "glasgow_coma": "64",
+    "nih_stroke": "715"
   },
   "recording_analysis": {
     "total_recordings": 5,

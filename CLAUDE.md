@@ -148,6 +148,43 @@ if __name__ == "__main__":
 ### Phase 2: Core MDCalc Automation Development
 **Goal**: Build the MDCalc Playwright MCP server with atomic tools.
 
+#### 🆕 Architecture Decision: Screenshot-Based Universal Calculator Support
+
+**Problem Discovered During Testing**:
+- Field detection returns 0 fields for complex calculators (NIH Stroke, CHA2DS2-VASc)
+- React-based button interfaces use dynamic rendering not captured by DOM queries
+- Special characters (≤, ≥) in button text break selector matching
+- Each calculator has unique patterns - impractical to handle all 900+ programmatically
+
+**Solution**: Use Claude's vision capabilities to understand calculator structure from screenshots.
+
+```python
+# Implementation Plan:
+def get_calculator_details(calc_id):
+    # 1. Navigate to calculator
+    # 2. Take screenshot of form area
+    # 3. Return screenshot + basic metadata
+    return {
+        "title": "HEART Score for Chest Pain",
+        "url": "https://www.mdcalc.com/calc/1752/heart-score",
+        "screenshot_base64": "...",  # ~50KB JPEG
+        "fields": []  # Let Claude figure it out visually
+    }
+
+# Claude's Process:
+# 1. SEES the calculator screenshot
+# 2. READS all field labels and button options visually
+# 3. UNDERSTANDS the structure without needing selectors
+# 4. MAPS patient data to visible fields
+# 5. TELLS the tool exactly what to click/enter
+```
+
+**Why This Works**:
+- Claude can see ALL fields, even dynamically rendered ones
+- Handles any UI pattern or framework (React, Vue, vanilla JS)
+- Works for all 900+ calculators without special cases
+- Robust against UI updates and changes
+
 #### Step 1: Create MDCalc Client
 
 **File**: `mcp-servers/mdcalc-automation-mcp/src/mdcalc_client.py`
@@ -642,6 +679,28 @@ Expected Claude behavior:
 ### Phase 4: Testing & Validation
 **Goal**: Ensure all components work together, especially the data mapping.
 
+#### 🆕 Simplified Testing Strategy
+
+**Key Decision**: Tests should verify mechanics work, NOT try to handle "any calculator". That's Claude's job!
+
+**Test Approach**:
+1. **Mechanical Tests** (`test_mdcalc_client.py`)
+   - Test with 5-10 known calculators
+   - Use hardcoded inputs for predictable calculators
+   - Verify search, navigation, execution mechanics
+
+2. **Integration Tests** (`test_known_calculators.py`)
+   - Focus on calculators we understand well:
+     - HEART Score (ID: 1752) - button-based
+     - LDL Calculated (ID: 70) - numeric inputs
+     - CHA2DS2-VASc (ID: 801) - mixed inputs
+   - Use specific test data for each
+
+3. **End-to-End Test** (with Claude Desktop)
+   - This is where "any calculator" support is proven
+   - Claude uses vision to understand new calculators
+   - No special programming needed
+
 #### Step 1: Test Individual Components
 
 **File**: `scripts/test_mdcalc_integration.py`
@@ -816,28 +875,30 @@ Review `requirements/mdcalc-demo-scenarios.md` for complete demo scripts.
 - [x] Deploy config to `mcp-servers/mdcalc-automation-mcp/src/mdcalc_config.json`
 - [x] Add recordings/ to .gitignore
 
-### Phase 1: Foundation
-- [ ] Set up Python virtual environment
-- [ ] Install all dependencies
-- [ ] Verify health-analysis-server connection
-- [ ] Test basic project structure
+### Phase 1: Foundation ✅ COMPLETED
+- [x] Set up Python virtual environment
+- [x] Install all dependencies (requirements.txt created)
+- [x] Verify health-analysis-server connection
+- [x] Test basic project structure
 
-### Phase 2: Core Automation
-- [ ] Implement `mdcalc_client.py`
-- [ ] Create `mdcalc_mcp.py` server
-- [ ] Test search functionality
-- [ ] Test calculator execution
-- [ ] Add to Claude Desktop config
+### Phase 2: Core Automation ✅ COMPLETED
+- [x] Implement `mdcalc_client.py` with dynamic field detection
+- [x] Create simplified test framework for known calculators
+- [x] Test search functionality (working correctly)
+- [x] Test calculator execution (basic mechanics working)
+- [ ] Add to Claude Desktop config (pending)
 
-### Phase 3: Agent Enhancement
+### Phase 3: Agent Enhancement 🔄 IN PROGRESS
+- [ ] Implement screenshot capability for universal calculator support
 - [ ] Configure agent instructions
 - [ ] Define clinical pathways
 - [ ] Test parallel tool calls
 - [ ] Verify synthesis works
 
-### Phase 4: Testing
-- [ ] Run integration tests
-- [ ] Test with Claude Desktop
+### Phase 4: Testing 🔄 PARTIAL
+- [x] Run integration tests (test_known_calculators.py working)
+- [x] Test universal calculator with auto-generation (test_any_calculator.py)
+- [ ] Test with Claude Desktop (MCP integration pending)
 - [ ] Validate all demo scenarios
 - [ ] Record backup videos
 
@@ -878,18 +939,49 @@ python /Users/aju/Dropbox/Development/Git/09-22-25-mdcalc-agent-v2/mdcalc-agent/
 4. **API Endpoint Discovery**: Identified key MDCalc API patterns
 5. **Architecture Clarification**: Established "Smart Agent, Dumb Tools" principle
 
-### In Progress 🔄
-- Verifying health MCP server connection
-- Building basic MDCalc client
+### Current Status 📊
+
+#### Working Components ✅
+- **Search Functionality**: Correctly returns relevant calculators
+- **Basic Field Detection**: Works for simple input fields
+- **Button Clicking**: Works for most button-based selections
+- **Result Extraction**: Successfully extracts scores and interpretations
+- **Test Framework**: Two complementary test approaches:
+  - `test_known_calculators.py` - Focused tests for 3 well-understood calculators
+  - `test_any_calculator.py` - Universal tester with auto-input generation
+
+#### Known Issues 🔧
+- **Complex Field Detection**: Some calculators (NIH Stroke, CHA2DS2-VASc) return 0 fields
+- **Special Characters**: Buttons with "≤" symbols fail to click
+- **Result Parsing**: CHA2DS2-VASc returns raw JSON instead of clean score
+- **Field Name Mapping**: LDL calculator needs specific field IDs, not generic names
 
 ### Next Steps 📋
-1. **Verify Health MCP**: Test connection to existing Snowflake health database
-2. **Build MDCalc Client**: Implement playwright automation with extracted selectors
-3. **Build MDCalc Client**: Implement playwright automation with extracted selectors
-4. **Create MCP Server**: Build atomic tools following "dumb tools" principle
-5. **Configure Claude Desktop**: Add mdcalc-automation to MCP servers
-6. **Test Data Population**: Verify Claude correctly maps health data to calculator inputs
-7. **Demo Preparation**: Polish scenarios from `mdcalc-demo-scenarios.md`
+
+#### Immediate (Before MCP Integration):
+1. **Implement Screenshot Capability**:
+   - Add screenshot capture in `get_calculator_details()`
+   - Return base64-encoded JPEG (~50KB)
+   - Let Claude's vision handle field understanding
+
+2. **Clean Up Test Suite**:
+   - Keep only essential test files (completed)
+   - Focus on mechanical testing, not "solving" calculators
+
+#### For MCP Integration:
+3. **Create MCP Server** (`mdcalc_mcp.py`):
+   - Wrap mdcalc_client.py with MCP protocol
+   - Expose 3 atomic tools: search, get_details, execute
+   - Return screenshot in get_details for Claude's vision
+
+4. **Configure Claude Desktop**:
+   - Add mdcalc-automation to claude_desktop_config.json
+   - Test with both health-analysis and mdcalc MCPs
+
+5. **End-to-End Testing**:
+   - Test Claude's ability to understand ANY calculator via screenshots
+   - Verify intelligent data mapping from health records
+   - Validate multi-calculator synthesis
 
 ### Key Implementation Notes
 

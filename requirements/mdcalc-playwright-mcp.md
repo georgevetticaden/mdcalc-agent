@@ -111,30 +111,28 @@ class MDCalcClient:
     
     async def get_calculator_details(self, calculator_id: str) -> Dict:
         """
-        Returns RAW calculator requirements - no interpretation.
-        Claude will do all the mapping.
-        
+        Returns screenshot + minimal field selectors.
+        Claude uses VISION to understand the calculator.
+
         Example return:
         {
             "title": "HEART Score for Major Cardiac Events",
-            "inputs": [
-                {
-                    "name": "age",
-                    "type": "number",
-                    "label": "Age",
-                    "min": 0,
-                    "max": 120
-                },
-                {
-                    "name": "history",
-                    "type": "select",
-                    "label": "History",
-                    "options": [
-                        {"value": "slightly_suspicious", "text": "Slightly suspicious"},
-                        {"value": "moderately_suspicious", "text": "Moderately suspicious"},
-                        {"value": "highly_suspicious", "text": "Highly suspicious"}
-                    ]
-                },
+            "screenshot_base64": "[compressed JPEG ~50KB]",
+            "fields": {
+                "History": {"selector": "#history_field", "type": "buttons"},
+                "Age": {"selector": "#age_field", "type": "buttons"},
+                "ECG": {"selector": "#ecg_field", "type": "buttons"},
+                "Risk factors": {"selector": "#risk_field", "type": "numeric"},
+                "Troponin": {"selector": "#troponin_field", "type": "buttons"}
+            },
+            "url": "https://www.mdcalc.com/calc/1752/heart-score"
+        }
+
+        Implementation:
+        - Take screenshot of calculator area (not full page)
+        - Compress to ~50KB JPEG
+        - Extract minimal selector mapping
+        - Return for Claude's vision to understand
                 {
                     "name": "ecg",
                     "type": "select", 
