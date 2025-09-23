@@ -193,39 +193,116 @@ python ../../tools/calculator-scraper/verify_catalog.py
 
 ## Testing
 
-### Test MCP Server
+### Test Suite Overview
+
+The test suite verifies all aspects of the MDCalc automation system. Tests should be run in the following order:
+
+| Test File | Purpose | What It Validates |
+|-----------|---------|-------------------|
+| `test_screenshot.py` | Basic screenshot capability | - Browser automation works<br>- Screenshot capture and encoding<br>- File size optimization (~23KB) |
+| `test_calculator_execution.py` | **Main integration test** | - Button clicking (divs styled as buttons)<br>- Numeric input fields<br>- Context-aware selection<br>- Result extraction<br>- Pre-selected value handling |
+| `test_mcp_server.py` | MCP protocol compliance | - Server initialization<br>- Tool registration<br>- Request/response format<br>- Claude Desktop compatibility |
+| `test_known_calculators.py` | Specific calculator validation | - HEART Score<br>- LDL Calculator<br>- CHA2DS2-VASc Score |
+| `test_any_calculator.py` | Universal calculator testing | - Test any calculator by ID<br>- Auto-generate test inputs<br>- Useful for debugging new calculators |
+
+### Recommended Test Order
 
 ```bash
-python tests/test_mcp_server.py
-```
-
-Tests all 4 tools:
-- List all calculators
-- Search functionality
-- Get calculator with screenshot
-- Execute calculator
-
-### Test Known Calculators
-
-```bash
-python tests/test_known_calculators.py
-```
-
-Tests specific calculators:
-- HEART Score (button-based)
-- LDL Calculator (numeric inputs)
-- CHA2DS2-VASc (mixed inputs)
-
-### Test Screenshot Capability
-
-```bash
+# 1. Basic screenshot test (quick smoke test)
 python tests/test_screenshot.py
+
+# 2. Main integration test (comprehensive)
+python tests/test_calculator_execution.py
+# Enter 'n' when prompted to watch the browser
+
+# 3. MCP server protocol test
+python tests/test_mcp_server.py
+
+# 4. (Optional) Test specific calculators
+python tests/test_known_calculators.py
+
+# 5. (Optional) Test any specific calculator
+python tests/test_any_calculator.py
+# Follow prompts to enter calculator ID
 ```
 
-Verifies:
-- Screenshot capture works
-- File size is optimized (~23KB)
-- Base64 encoding successful
+### Test Details
+
+#### 1. `test_screenshot.py` - Screenshot Capability
+- **Purpose**: Verify basic browser automation and screenshot capture
+- **Duration**: ~10 seconds
+- **Key Validation**:
+  - Browser launches successfully
+  - Screenshots are captured
+  - Images are properly encoded as base64
+  - File sizes are optimized
+
+#### 2. `test_calculator_execution.py` - Main Integration Test ⭐
+- **Purpose**: Comprehensive testing of all calculator types
+- **Duration**: ~30 seconds
+- **Tests**:
+  1. **Catalog Search**: Search for calculators by keyword
+  2. **HEART Score**: Button-based calculator with pre-selected values
+  3. **LDL Calculator**: Numeric input fields
+  4. **CHA2DS2-VASc**: Mixed inputs with context-aware selection
+- **Key Lessons Applied**:
+  - Uses exact field names from UI (e.g., "History" not "history")
+  - Omits pre-selected fields to avoid toggling them off
+  - Handles spaces in field names (e.g., "Risk factors")
+  - Extracts results from `calc_result` containers
+
+#### 3. `test_mcp_server.py` - MCP Protocol Test
+- **Purpose**: Verify MCP server works with Claude Desktop
+- **Duration**: ~20 seconds
+- **Validates**:
+  - JSON-RPC protocol compliance
+  - All 4 MCP tools work correctly
+  - Screenshot transmission as base64
+  - Error handling
+
+#### 4. `test_known_calculators.py` - Known Calculators
+- **Purpose**: Test specific high-value calculators
+- **Duration**: ~20 seconds
+- **Note**: Uses same input patterns as `test_calculator_execution.py`
+
+#### 5. `test_any_calculator.py` - Universal Tester
+- **Purpose**: Debug and test any calculator interactively
+- **Usage**:
+  ```bash
+  python tests/test_any_calculator.py
+  # Enter calculator ID when prompted (e.g., 1752, 70, 801)
+  # Optionally provide custom inputs or use auto-generated ones
+  ```
+
+### Important Testing Notes
+
+1. **Field Names Must Be Exact**: Always use exact field names as they appear in the UI
+   - ✅ `'History'` (capital H)
+   - ❌ `'history'` (lowercase)
+
+2. **Pre-selected Values**: Don't include fields that are already selected by default
+   - For HEART Score: Omit "EKG" and "Initial troponin" if already selected
+
+3. **Screenshots Location**: All test screenshots are saved to:
+   ```
+   tests/screenshots/
+   ├── heart_score_test.jpg      # Initial state
+   ├── 1752_result.jpg           # After execution
+   ├── ldl_calc_test.jpg         # Initial state
+   ├── 70_result.jpg             # After execution
+   └── ...
+   ```
+
+4. **Running Tests Visibly**: Enter `n` when prompted to see the browser during tests
+
+### Troubleshooting Tests
+
+| Issue | Solution |
+|-------|----------|
+| Button not clicking | Check exact text in screenshot, ensure no extra spaces |
+| Pre-selected value toggled off | Don't include that field in inputs |
+| Result extraction fails | Check `calc_result` container structure in browser |
+| Field not found | Use exact field name with proper capitalization |
 
 ## Configuration
 

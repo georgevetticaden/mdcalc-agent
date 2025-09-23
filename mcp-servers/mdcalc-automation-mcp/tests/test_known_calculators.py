@@ -47,12 +47,14 @@ class KnownCalculatorTests:
 
             # Execute with known good inputs
             print("\nExecuting with test data...")
+            # Use exact field names from UI, omit pre-selected fields
             test_inputs = {
-                'history': 'Moderately suspicious',
-                'age': '45-64',
-                'ecg': 'Normal',
-                'risk_factors': '1-2 risk factors',
-                'troponin': '≤1x normal limit'
+                'History': 'Moderately suspicious',  # Capital H
+                'Age': '45-64',
+                'Risk factors': '1-2 risk factors'
+                # Omitting pre-selected fields:
+                # 'EKG': 'Normal' - already selected by default
+                # 'Initial troponin': '≤normal limit' - already selected by default
             }
 
             execution_result = await self.client.execute_calculator("1752", test_inputs)
@@ -89,10 +91,11 @@ class KnownCalculatorTests:
 
             # Execute with known good inputs
             print("\nExecuting with test data...")
+            # Use exact field names from UI (with spaces and capitals)
             test_inputs = {
-                'total_cholesterol': '200',
-                'hdl': '50',
-                'triglycerides': '150'
+                'Total Cholesterol': '200',
+                'HDL Cholesterol': '50',
+                'Triglycerides': '150'
             }
 
             execution_result = await self.client.execute_calculator("70", test_inputs)
@@ -129,14 +132,17 @@ class KnownCalculatorTests:
 
             # Execute with known good inputs
             print("\nExecuting with test data...")
+            # Use exact field names from UI
+            # Only change fields from their defaults (all history fields default to "No")
             test_inputs = {
-                'age': '65-74',
-                'sex': 'Female',
-                'chf': 'Yes',
-                'hypertension': 'Yes',
-                'stroke': 'No',
-                'vascular': 'No',
-                'diabetes': 'Yes'
+                'Age': '65-74',
+                'Sex': 'Female',
+                'CHF history': 'Yes',
+                'Hypertension history': 'Yes',
+                # Don't set these to 'No' - they're already at default 'No'
+                # 'Stroke/TIA/thromboembolism history': 'No',
+                # 'Vascular disease history': 'No',
+                'Diabetes history': 'Yes'
             }
 
             execution_result = await self.client.execute_calculator("801", test_inputs)

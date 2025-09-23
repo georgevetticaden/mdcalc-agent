@@ -139,18 +139,22 @@ async def test_mcp_server():
             'arguments': {
                 'calculator_id': '1752',
                 'inputs': {
-                    'history': 'Moderately suspicious',
-                    'age': '45-64',
-                    'ecg': 'Normal',
-                    'risk_factors': '1-2 risk factors',
-                    'troponin': '≤1x normal limit'
+                    # Use exact field names as they appear in the UI
+                    # Don't include pre-selected fields (EKG Normal, Initial troponin)
+                    'History': 'Moderately suspicious',  # Capital H
+                    'Age': '45-64',
+                    'Risk factors': '1-2 risk factors'
+                    # NOT including:
+                    # 'EKG': 'Normal' - already selected by default
+                    # 'Initial troponin': '≤normal limit' - already selected by default
                 }
             }
         }
     }
 
     print("   Executing with test inputs...")
-    print("   Note: This may fail if button text doesn't match exactly")
+    print("   Using exact field names from UI (History, Age, Risk factors)")
+    print("   Omitting pre-selected fields (EKG, Initial troponin)")
 
     try:
         response = await server.handle_request(execute_request)
