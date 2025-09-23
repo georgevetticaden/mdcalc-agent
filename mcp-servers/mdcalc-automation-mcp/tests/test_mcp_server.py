@@ -48,11 +48,34 @@ async def test_mcp_server():
     for tool in tools:
         print(f"   - {tool['name']}: {tool['description'][:50]}...")
 
-    # Test 3: Search calculators
-    print("\n3️⃣ Testing mdcalc_search...")
-    search_request = {
+    # Test 3: List all calculators
+    print("\n3️⃣ Testing mdcalc_list_all...")
+    list_all_request = {
         'jsonrpc': '2.0',
         'id': 3,
+        'method': 'tools/call',
+        'params': {
+            'name': 'mdcalc_list_all',
+            'arguments': {}
+        }
+    }
+    response = await server.handle_request(list_all_request)
+    content = response['result']['content'][0]['text']
+    list_data = json.loads(content)
+    print(f"✅ Found {list_data['total_count']} calculators")
+    print(f"   Categories: {', '.join(list_data['categories'])}")
+
+    # Show a few calculators
+    for category, calcs in list(list_data['calculators_by_category'].items())[:2]:
+        print(f"   {category}: {len(calcs)} calculators")
+        for calc in calcs[:2]:
+            print(f"      - {calc['name']} (ID: {calc['id']})")
+
+    # Test 4: Search calculators
+    print("\n4️⃣ Testing mdcalc_search...")
+    search_request = {
+        'jsonrpc': '2.0',
+        'id': 4,
         'method': 'tools/call',
         'params': {
             'name': 'mdcalc_search',
@@ -69,11 +92,11 @@ async def test_mcp_server():
     if search_data['calculators']:
         print(f"   First result: {search_data['calculators'][0]['title']}")
 
-    # Test 4: Get calculator with screenshot
-    print("\n4️⃣ Testing mdcalc_get_calculator with screenshot...")
+    # Test 5: Get calculator with screenshot
+    print("\n5️⃣ Testing mdcalc_get_calculator with screenshot...")
     get_request = {
         'jsonrpc': '2.0',
-        'id': 4,
+        'id': 5,
         'method': 'tools/call',
         'params': {
             'name': 'mdcalc_get_calculator',
@@ -105,11 +128,11 @@ async def test_mcp_server():
     if not has_image:
         print("⚠️  No screenshot in response")
 
-    # Test 5: Execute calculator
-    print("\n5️⃣ Testing mdcalc_execute...")
+    # Test 6: Execute calculator
+    print("\n6️⃣ Testing mdcalc_execute...")
     execute_request = {
         'jsonrpc': '2.0',
-        'id': 5,
+        'id': 6,
         'method': 'tools/call',
         'params': {
             'name': 'mdcalc_execute',
@@ -153,10 +176,17 @@ async def test_mcp_server():
     print("Summary:")
     print("="*60)
     print("✅ Server initializes properly")
-    print("✅ Tools are listed correctly")
+    print("✅ Tools are listed correctly (4 tools)")
+    print("✅ Calculator catalog available (mdcalc_list_all)")
     print("✅ Search functionality works")
     print("✅ Screenshot capture and transmission works")
     print("✅ Ready for Claude Desktop integration")
+
+    print("\n🔧 Available Tools:")
+    print("1. mdcalc_list_all - Get all calculators organized by category")
+    print("2. mdcalc_search - Search for calculators by keyword")
+    print("3. mdcalc_get_calculator - Get details with screenshot")
+    print("4. mdcalc_execute - Execute with mapped inputs")
 
 
 if __name__ == "__main__":

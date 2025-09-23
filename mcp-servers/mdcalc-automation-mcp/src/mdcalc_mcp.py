@@ -119,6 +119,15 @@ class MDCalcMCPServer:
         """Return available tools - atomic operations only."""
         return [
             {
+                'name': 'mdcalc_list_all',
+                'description': 'Get comprehensive list of all available MDCalc calculators organized by category',
+                'inputSchema': {
+                    'type': 'object',
+                    'properties': {},
+                    'required': []
+                }
+            },
+            {
                 'name': 'mdcalc_search',
                 'description': 'Search MDCalc for medical calculators by condition or name',
                 'inputSchema': {
@@ -177,7 +186,33 @@ class MDCalcMCPServer:
     async def execute_tool(self, tool_name: str, arguments: Dict) -> Dict:
         """Execute the specified tool with given arguments."""
         try:
-            if tool_name == 'mdcalc_search':
+            if tool_name == 'mdcalc_list_all':
+                calculators = await self.client.get_all_calculators()
+
+                # Group by category
+                by_category = {}
+                for calc in calculators:
+                    category = calc.get('category', 'Other')
+                    if category not in by_category:
+                        by_category[category] = []
+                    by_category[category].append(calc)
+
+                return {
+                    'content': [
+                        {
+                            'type': 'text',
+                            'text': json.dumps({
+                                'success': True,
+                                'total_count': len(calculators),
+                                'categories': list(by_category.keys()),
+                                'calculators_by_category': by_category,
+                                'all_calculators': calculators
+                            }, indent=2)
+                        }
+                    ]
+                }
+
+            elif tool_name == 'mdcalc_search':
                 query = arguments.get('query', '')
                 limit = arguments.get('limit', 10)
 

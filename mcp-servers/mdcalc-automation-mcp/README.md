@@ -1,18 +1,322 @@
 # MDCalc Automation MCP Server
 
-MCP server that provides atomic tools for MDCalc calculator automation via Playwright.
+Model Context Protocol (MCP) server that provides Claude with access to all 825 MDCalc medical calculators through visual understanding and browser automation.
 
-## Core Components:
-- `mdcalc_mcp.py` - Main MCP server (provides atomic tools only)
-- `mdcalc_client.py` - Playwright automation client
-- `calculator_discovery.py` - Calculator search and discovery
-- `calculator_executor.py` - Execute calculators with inputs
-- `result_parser.py` - Parse calculation results
+## Overview
 
-## Atomic Tools Provided:
-1. `search_calculators` - Search MDCalc for relevant calculators
-2. `get_calculator_details` - Get input requirements for a calculator
-3. `execute_calculator` - Run a single calculator with provided inputs
+This MCP server enables Claude to:
+- Search and discover medical calculators from a catalog of 825 tools
+- Understand calculator requirements through screenshots (visual AI)
+- Execute calculators with intelligently mapped patient data
+- Extract and interpret results
 
-## Note:
-This MCP server provides ONLY atomic operations. Claude handles all orchestration, parallel execution, and synthesis of results.
+## Architecture
+
+### Screenshot-Based Universal Calculator Support
+
+Instead of hardcoding selectors for 825 different calculators, this server uses a revolutionary approach:
+
+```
+Traditional Approach (Fragile):
+- Hardcode selectors for each calculator ❌
+- Break when UI changes ❌
+- Maintain 825 different configurations ❌
+
+Our Approach (Universal):
+- Take screenshot of calculator ✅
+- Claude SEES the fields visually ✅
+- Claude maps data based on what it sees ✅
+- Works for ALL calculators automatically ✅
+```
+
+### How It Works
+
+1. **User Request**: "Calculate HEART score for chest pain patient"
+2. **Claude calls `mdcalc_get_calculator("1752")`**:
+   - Server navigates to calculator
+   - Takes screenshot (23KB JPEG)
+   - Returns screenshot + metadata
+3. **Claude SEES the calculator**:
+   - Visually identifies fields: History, Age, ECG, Risk Factors, Troponin
+   - Understands options for each field
+4. **Claude maps patient data**:
+   - Age 68 → sees "≥65" button → maps to that option
+   - 3 risk factors → sees "≥3 risk factors" → maps to that option
+5. **Claude calls `mdcalc_execute()` with mapped values**
+6. **Server clicks buttons and returns results**
+
+## Installation
+
+### Prerequisites
+
+- Python 3.7+
+- Playwright
+- Chrome/Chromium browser
+
+### Setup
+
+```bash
+# Install Python dependencies
+pip install playwright asyncio beautifulsoup4
+
+# Install browser
+playwright install chromium
+
+# Verify catalog exists
+ls src/calculator-catalog/mdcalc_catalog.json
+# Should show: 825 calculators
+```
+
+## MCP Tools
+
+### 1. `mdcalc_list_all`
+
+Get complete catalog of all 825 calculators organized by specialty.
+
+**Parameters**: None
+
+**Returns**:
+```json
+{
+  "total_count": 825,
+  "categories": ["Cardiology", "Pulmonology", ...],
+  "calculators_by_category": {
+    "Cardiology": [
+      {"id": "1752", "name": "HEART Score", "condition": "chest pain"},
+      ...
+    ]
+  }
+}
+```
+
+### 2. `mdcalc_search`
+
+Search for calculators by condition, symptom, or name.
+
+**Parameters**:
+- `query` (string): Search term
+- `limit` (integer, optional): Max results (default: 10)
+
+**Returns**:
+```json
+{
+  "count": 5,
+  "calculators": [
+    {
+      "id": "1752",
+      "title": "HEART Score",
+      "url": "https://www.mdcalc.com/calc/1752/...",
+      "description": "Predicts 6-week risk..."
+    }
+  ]
+}
+```
+
+### 3. `mdcalc_get_calculator`
+
+Get calculator details with screenshot for visual understanding.
+
+**Parameters**:
+- `calculator_id` (string): Calculator ID or slug
+
+**Returns**:
+- Image content (JPEG screenshot, ~23KB)
+- Text metadata:
+```json
+{
+  "title": "HEART Score",
+  "url": "https://www.mdcalc.com/calc/1752/...",
+  "fields_detected": 0,  // May be 0 due to React rendering
+  "screenshot_included": true
+}
+```
+
+**Note**: The screenshot is the key - Claude uses vision to understand the calculator structure.
+
+### 4. `mdcalc_execute`
+
+Execute calculator with mapped values.
+
+**Parameters**:
+- `calculator_id` (string): Calculator ID
+- `inputs` (object): Field values mapped by Claude
+
+**Example Input**:
+```json
+{
+  "calculator_id": "1752",
+  "inputs": {
+    "history": "Moderately suspicious",
+    "age": "≥65",
+    "ecg": "Normal",
+    "risk_factors": "≥3 risk factors",
+    "troponin": "≤1x normal limit"
+  }
+}
+```
+
+**Returns**:
+```json
+{
+  "success": true,
+  "score": 5,
+  "score_text": "5 points",
+  "risk_category": "Moderate",
+  "risk_percentage": "12%"
+}
+```
+
+## Calculator Catalog
+
+The server includes a pre-scraped catalog of all 825 MDCalc calculators:
+
+### Categories (16 total)
+- **Cardiology**: 245 calculators
+- **Pulmonology**: 67 calculators
+- **Emergency Medicine**: 43 calculators
+- **Hepatology**: 36 calculators
+- **Pediatrics**: 34 calculators
+- **Neurology**: 30 calculators
+- **Nephrology**: 22 calculators
+- **Oncology**: 22 calculators
+- And more...
+
+### Updating the Catalog
+
+```bash
+# Re-scrape MDCalc for latest calculators
+python ../../tools/calculator-scraper/scrape_mdcalc.py
+
+# Verify completeness
+python ../../tools/calculator-scraper/verify_catalog.py
+```
+
+## Testing
+
+### Test MCP Server
+
+```bash
+python tests/test_mcp_server.py
+```
+
+Tests all 4 tools:
+- List all calculators
+- Search functionality
+- Get calculator with screenshot
+- Execute calculator
+
+### Test Known Calculators
+
+```bash
+python tests/test_known_calculators.py
+```
+
+Tests specific calculators:
+- HEART Score (button-based)
+- LDL Calculator (numeric inputs)
+- CHA2DS2-VASc (mixed inputs)
+
+### Test Screenshot Capability
+
+```bash
+python tests/test_screenshot.py
+```
+
+Verifies:
+- Screenshot capture works
+- File size is optimized (~23KB)
+- Base64 encoding successful
+
+## Configuration
+
+### Add to Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "mdcalc-automation": {
+      "command": "python",
+      "args": [
+        "/full/path/to/mcp-servers/mdcalc-automation-mcp/src/mdcalc_mcp.py"
+      ],
+      "env": {
+        "PYTHONPATH": "/full/path/to/mdcalc-agent"
+      }
+    }
+  }
+}
+```
+
+## How Claude Uses This Server
+
+### Example: Chest Pain Assessment
+
+```
+User: "68-year-old with chest pain, diabetes, hypertension"
+
+Claude's Process:
+1. mdcalc_search("chest pain")
+   → Finds HEART Score, TIMI, GRACE
+
+2. mdcalc_get_calculator("1752")
+   → Gets HEART Score screenshot
+   → SEES fields visually
+
+3. Maps data intelligently:
+   - Sees "Age" field with options → Maps 68 to "≥65"
+   - Sees "Risk factors" → Counts HTN+DM → Maps to "≥3"
+
+4. mdcalc_execute("1752", mapped_values)
+   → Returns score: 5, risk: 12%
+
+5. Synthesizes: "Moderate risk, consider admission"
+```
+
+## Troubleshooting
+
+### Screenshot Too Large
+- Current: ~23KB (optimized)
+- If larger: Adjust quality in `mdcalc_client.py`
+
+### Calculator Not Found
+- Check calculator ID in catalog
+- Use search to find correct ID
+
+### Fields Not Detected
+- This is OK! Claude uses the screenshot
+- Field detection returning 0 is expected for React apps
+
+### Execution Failed
+- Ensure button text matches exactly
+- Check screenshot to verify UI hasn't changed
+
+## Design Philosophy
+
+**"Smart Agent, Dumb Tools"**
+
+This server is intentionally "dumb" - it only:
+- Takes screenshots
+- Clicks buttons
+- Extracts text
+
+All intelligence lives in Claude:
+- Visual understanding
+- Clinical interpretation
+- Data mapping
+- Result synthesis
+
+This separation ensures:
+- Universal calculator support
+- No maintenance of calculator-specific code
+- Robust against UI changes
+- Leverages Claude's vision capabilities
+
+## License
+
+MIT
+
+## Support
+
+For issues or questions, see the main [README.md](../../README.md) or [CLAUDE.md](../../CLAUDE.md)

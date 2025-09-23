@@ -74,6 +74,37 @@ class MDCalcClient:
         self.context = await self.browser.new_context(**context_params)
         logger.info("Browser initialized successfully")
 
+    async def get_all_calculators(self) -> List[Dict]:
+        """Get a comprehensive list of all MDCalc calculators organized by category."""
+        # Try to load from scraped catalog file
+        catalog_path = Path(__file__).parent / "calculator-catalog" / "mdcalc_catalog.json"
+
+        if catalog_path.exists():
+            try:
+                with open(catalog_path, 'r') as f:
+                    catalog = json.load(f)
+                    logger.info(f"Loaded {catalog['total_count']} calculators from catalog")
+                    return catalog['calculators']
+            except Exception as e:
+                logger.warning(f"Failed to load catalog: {e}, using fallback list")
+
+        # Fallback to minimal hardcoded list if catalog not available
+        logger.info("Using fallback calculator list")
+        return [
+            # Essential calculators for demos
+            {"id": "1752", "name": "HEART Score", "category": "Cardiology", "condition": "chest pain"},
+            {"id": "111", "name": "TIMI Risk Score", "category": "Cardiology", "condition": "ACS"},
+            {"id": "801", "name": "CHA2DS2-VASc", "category": "Cardiology", "condition": "AFib"},
+            {"id": "1785", "name": "HAS-BLED", "category": "Cardiology", "condition": "AFib bleeding risk"},
+            {"id": "324", "name": "CURB-65", "category": "Pulmonology", "condition": "pneumonia"},
+            {"id": "115", "name": "Wells Criteria PE", "category": "Pulmonology", "condition": "pulmonary embolism"},
+            {"id": "691", "name": "SOFA Score", "category": "Critical Care", "condition": "sepsis"},
+            {"id": "43", "name": "Creatinine Clearance", "category": "Nephrology", "condition": "kidney function"},
+            {"id": "78", "name": "MELD Score", "category": "Hepatology", "condition": "liver disease"},
+            {"id": "404", "name": "NIH Stroke Scale", "category": "Neurology", "condition": "stroke"},
+            {"id": "70", "name": "LDL Calculated", "category": "Laboratory", "condition": "cholesterol"},
+        ]
+
     async def search_calculators(self, query: str, limit: int = 10) -> List[Dict]:
         """Search for calculators by condition or name."""
         page = await self.context.new_page()
