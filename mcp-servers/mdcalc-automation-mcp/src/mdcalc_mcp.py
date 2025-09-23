@@ -1,8 +1,25 @@
 #!/usr/bin/env python3
 """
-MDCalc MCP Server
-Provides atomic tools for MDCalc automation via Model Context Protocol.
-Claude handles all intelligence and mapping - tools are purely mechanical.
+MDCalc MCP Server - Screenshot-Based Universal Calculator Support
+
+This MCP server provides Claude with access to all 825 MDCalc medical calculators
+through visual understanding and browser automation.
+
+Architecture:
+    - Screenshot-based: Claude SEES calculators visually (no hardcoded selectors)
+    - Universal support: Works with ALL 825 calculators automatically
+    - Smart Agent, Dumb Tools: Claude handles intelligence, tools are mechanical
+    - Catalog-driven: Complete calculator catalog with categories and metadata
+
+Tools Provided:
+    1. mdcalc_list_all: Get catalog of all 825 calculators
+    2. mdcalc_search: Search calculators by condition/symptom/name
+    3. mdcalc_get_calculator: Get screenshot for visual understanding
+    4. mdcalc_execute: Execute calculator with mapped values
+
+Usage:
+    Configure in claude_desktop_config.json and Claude will have access
+    to all MDCalc calculators for clinical decision support.
 """
 
 import asyncio
@@ -116,11 +133,21 @@ class MDCalcMCPServer:
             }
 
     def get_tools(self) -> List[Dict]:
-        """Return available tools - atomic operations only."""
+        """
+        Return available MDCalc MCP tools.
+
+        These are atomic, mechanical operations. Claude handles ALL intelligence,
+        clinical interpretation, and data mapping. The tools simply navigate,
+        screenshot, click, and extract.
+        """
         return [
             {
                 'name': 'mdcalc_list_all',
-                'description': 'Get comprehensive list of all available MDCalc calculators organized by category',
+                'description': (
+                    'Get the complete catalog of all 825 MDCalc medical calculators organized by specialty. '
+                    'Returns comprehensive list with calculator IDs, names, categories, and conditions. '
+                    'Use this to discover available calculators or when you need to browse by specialty.'
+                ),
                 'inputSchema': {
                     'type': 'object',
                     'properties': {},
@@ -129,18 +156,25 @@ class MDCalcMCPServer:
             },
             {
                 'name': 'mdcalc_search',
-                'description': 'Search MDCalc for medical calculators by condition or name',
+                'description': (
+                    'Search the MDCalc calculator catalog by condition, symptom, or calculator name. '
+                    'Searches across 825 calculators in name, category, and slug fields. '
+                    'Returns matching calculators with ID, title, category, and URL. '
+                    'Example queries: "chest pain", "heart", "pneumonia", "TIMI", "stroke".'
+                ),
                 'inputSchema': {
                     'type': 'object',
                     'properties': {
                         'query': {
                             'type': 'string',
-                            'description': 'Search term (condition, symptom, or calculator name)'
+                            'description': 'Search term - can be condition (e.g., "chest pain"), symptom (e.g., "dyspnea"), body system (e.g., "cardiac"), or calculator name (e.g., "HEART Score")'
                         },
                         'limit': {
                             'type': 'integer',
-                            'description': 'Maximum number of results to return',
-                            'default': 10
+                            'description': 'Maximum number of results to return (default: 10, max: 50)',
+                            'default': 10,
+                            'minimum': 1,
+                            'maximum': 50
                         }
                     },
                     'required': ['query']
@@ -148,13 +182,23 @@ class MDCalcMCPServer:
             },
             {
                 'name': 'mdcalc_get_calculator',
-                'description': 'Get input requirements and structure for a specific calculator',
+                'description': (
+                    'Get a screenshot and details of a specific MDCalc calculator. '
+                    'Returns a JPEG screenshot (23KB) of the calculator interface for visual understanding, '
+                    'plus metadata including title and URL. The screenshot shows all input fields, options, '
+                    'and current values. YOU must use vision to understand the calculator structure and '
+                    'map patient data to the appropriate buttons/inputs shown in the screenshot.'
+                ),
                 'inputSchema': {
                     'type': 'object',
                     'properties': {
                         'calculator_id': {
                             'type': 'string',
-                            'description': 'MDCalc calculator ID (e.g., "1752") or slug (e.g., "heart-score")'
+                            'description': (
+                                'MDCalc calculator ID or slug. Can be numeric ID (e.g., "1752" for HEART Score) '
+                                'or slug format (e.g., "heart-score", "cha2ds2-vasc", "curb-65"). '
+                                'Get IDs from mdcalc_search or mdcalc_list_all results.'
+                            )
                         }
                     },
                     'required': ['calculator_id']
@@ -162,17 +206,29 @@ class MDCalcMCPServer:
             },
             {
                 'name': 'mdcalc_execute',
-                'description': 'Execute a calculator with provided inputs. Tool is mechanical - YOU must map all values intelligently.',
+                'description': (
+                    'Execute a calculator by filling inputs and clicking buttons based on provided values. '
+                    'This is a MECHANICAL tool - it only clicks what you tell it. YOU must: '
+                    '1) First call mdcalc_get_calculator to SEE the calculator visually, '
+                    '2) Map patient data to the EXACT button text or input values shown, '
+                    '3) Pass the mapped values to this tool. '
+                    'Returns calculation results including score, risk category, and interpretation.'
+                ),
                 'inputSchema': {
                     'type': 'object',
                     'properties': {
                         'calculator_id': {
                             'type': 'string',
-                            'description': 'MDCalc calculator ID or slug'
+                            'description': 'MDCalc calculator ID (e.g., "1752") or slug (e.g., "heart-score")'
                         },
                         'inputs': {
                             'type': 'object',
-                            'description': 'Input values mapped to field names. YOU must convert patient data to appropriate values.',
+                            'description': (
+                                'Field values mapped to calculator inputs. Keys should be field names '
+                                '(e.g., "age", "history", "troponin"). Values must match EXACT button text '
+                                'as shown in screenshot (e.g., "≥65", "Moderately suspicious", "≤1x normal limit"). '
+                                'For numeric inputs, provide the numeric value. YOU are responsible for all mapping.'
+                            ),
                             'additionalProperties': {
                                 'type': 'string'
                             }
@@ -184,7 +240,16 @@ class MDCalcMCPServer:
         ]
 
     async def execute_tool(self, tool_name: str, arguments: Dict) -> Dict:
-        """Execute the specified tool with given arguments."""
+        """
+        Execute the specified MDCalc tool with given arguments.
+
+        Returns:
+            Dict containing 'content' with tool results:
+            - mdcalc_list_all: Returns catalog of 825 calculators grouped by category
+            - mdcalc_search: Returns matching calculators with IDs and metadata
+            - mdcalc_get_calculator: Returns screenshot (image) + calculator metadata
+            - mdcalc_execute: Returns score, risk category, and clinical interpretation
+        """
         try:
             if tool_name == 'mdcalc_list_all':
                 calculators = await self.client.get_all_calculators()

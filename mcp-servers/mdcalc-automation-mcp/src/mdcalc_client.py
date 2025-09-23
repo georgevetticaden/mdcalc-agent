@@ -1,7 +1,25 @@
 #!/usr/bin/env python3
 """
-MDCalc Automation Client V2
-Updated to handle MDCalc's React-based button interface
+MDCalc Automation Client - Browser automation with screenshot support
+
+This client provides low-level browser automation for MDCalc calculators using Playwright.
+The key innovation is using screenshots for Claude's visual understanding rather than
+maintaining complex selectors for 825 different calculators.
+
+Core Capabilities:
+    - Navigate to any MDCalc calculator by ID or slug
+    - Capture optimized screenshots (23KB JPEG) of calculator interfaces
+    - Search within catalog of 825 calculators
+    - Execute calculators by clicking buttons and filling inputs
+    - Extract results after calculation
+
+Design Philosophy:
+    - Screenshots over selectors: Claude SEES the calculator
+    - Universal support: One approach works for all calculators
+    - Mechanical execution: No clinical logic, just browser automation
+    - Catalog-driven: Complete offline catalog for fast searching
+
+This client is intentionally "dumb" - all intelligence lives in Claude.
 """
 
 import asyncio
@@ -19,8 +37,25 @@ logger = logging.getLogger(__name__)
 
 class MDCalcClient:
     """
-    Playwright client for MDCalc automation.
-    Handles React-based button interface.
+    MDCalc automation client using Playwright for browser control.
+
+    This client implements a screenshot-based approach for universal calculator support.
+    Instead of maintaining 825 different selector configurations, we:
+    1. Navigate to calculators
+    2. Take screenshots for Claude's visual understanding
+    3. Execute calculators based on Claude's intelligent mapping
+
+    Key Design Principles:
+    - NO hardcoded selectors for specific calculators
+    - Screenshots enable Claude to SEE and understand any calculator
+    - Client is purely mechanical - Claude handles all intelligence
+    - Supports all 825 MDCalc calculators automatically
+
+    Methods:
+        get_all_calculators(): Load catalog of 825 calculators
+        search_calculators(): Search by condition/name
+        get_calculator_details(): Get screenshot for visual understanding
+        execute_calculator(): Execute with mapped values
     """
 
     def __init__(self):
@@ -28,18 +63,6 @@ class MDCalcClient:
         self.playwright = None
         self.browser = None
         self.context = None
-        self.config = self.load_config()
-        self.selectors = self.config['selectors']
-
-    def load_config(self):
-        """Load configuration from mdcalc_config.json."""
-        config_path = Path(__file__).parent / "mdcalc_config.json"
-
-        if not config_path.exists():
-            raise FileNotFoundError(f"Config file not found: {config_path}")
-
-        with open(config_path, 'r') as f:
-            return json.load(f)
 
     def load_auth_state(self):
         """Load authentication state if available."""
@@ -75,38 +98,93 @@ class MDCalcClient:
         logger.info("Browser initialized successfully")
 
     async def get_all_calculators(self) -> List[Dict]:
-        """Get a comprehensive list of all MDCalc calculators organized by category."""
-        # Try to load from scraped catalog file
+        """
+        Load the complete MDCalc calculator catalog from JSON file.
+
+        Returns:
+            List[Dict]: List of 825 calculators, each containing:
+                - id (str): Calculator ID (e.g., "1752")
+                - name (str): Calculator name (e.g., "HEART Score")
+                - category (str): Medical specialty (e.g., "Cardiology")
+                - slug (str): URL slug (e.g., "heart-score")
+                - url (str): Full MDCalc URL
+
+        Raises:
+            FileNotFoundError: If catalog file doesn't exist
+            RuntimeError: If catalog file can't be parsed
+        """
+        # Load from scraped catalog file
         catalog_path = Path(__file__).parent / "calculator-catalog" / "mdcalc_catalog.json"
 
-        if catalog_path.exists():
-            try:
-                with open(catalog_path, 'r') as f:
-                    catalog = json.load(f)
-                    logger.info(f"Loaded {catalog['total_count']} calculators from catalog")
-                    return catalog['calculators']
-            except Exception as e:
-                logger.warning(f"Failed to load catalog: {e}, using fallback list")
+        if not catalog_path.exists():
+            raise FileNotFoundError(
+                f"Calculator catalog not found at {catalog_path}. "
+                f"Please run: python tools/calculator-scraper/scrape_mdcalc.py"
+            )
 
-        # Fallback to minimal hardcoded list if catalog not available
-        logger.info("Using fallback calculator list")
-        return [
-            # Essential calculators for demos
-            {"id": "1752", "name": "HEART Score", "category": "Cardiology", "condition": "chest pain"},
-            {"id": "111", "name": "TIMI Risk Score", "category": "Cardiology", "condition": "ACS"},
-            {"id": "801", "name": "CHA2DS2-VASc", "category": "Cardiology", "condition": "AFib"},
-            {"id": "1785", "name": "HAS-BLED", "category": "Cardiology", "condition": "AFib bleeding risk"},
-            {"id": "324", "name": "CURB-65", "category": "Pulmonology", "condition": "pneumonia"},
-            {"id": "115", "name": "Wells Criteria PE", "category": "Pulmonology", "condition": "pulmonary embolism"},
-            {"id": "691", "name": "SOFA Score", "category": "Critical Care", "condition": "sepsis"},
-            {"id": "43", "name": "Creatinine Clearance", "category": "Nephrology", "condition": "kidney function"},
-            {"id": "78", "name": "MELD Score", "category": "Hepatology", "condition": "liver disease"},
-            {"id": "404", "name": "NIH Stroke Scale", "category": "Neurology", "condition": "stroke"},
-            {"id": "70", "name": "LDL Calculated", "category": "Laboratory", "condition": "cholesterol"},
-        ]
+        try:
+            with open(catalog_path, 'r') as f:
+                catalog = json.load(f)
+                logger.info(f"Loaded {catalog['total_count']} calculators from catalog")
+                return catalog['calculators']
+        except Exception as e:
+            raise RuntimeError(f"Failed to load calculator catalog: {e}")
 
     async def search_calculators(self, query: str, limit: int = 10) -> List[Dict]:
-        """Search for calculators by condition or name."""
+        """
+        Search for calculators by condition, symptom, or name.
+
+        Searches first in the local catalog (825 calculators) for speed,
+        then falls back to web search if needed.
+
+        Args:
+            query (str): Search term (e.g., "chest pain", "HEART", "pneumonia")
+            limit (int): Maximum results to return (default: 10)
+
+        Returns:
+            List[Dict]: Matching calculators, each containing:
+                - id (str): Calculator ID
+                - title (str): Calculator name
+                - category (str): Medical specialty
+                - slug (str): URL slug
+                - url (str): Full MDCalc URL
+                - description (str): Brief description (if available)
+        """
+        # First try searching in our catalog (faster and more reliable)
+        try:
+            all_calculators = await self.get_all_calculators()
+            query_lower = query.lower()
+
+            # Search in name, category, and slug
+            matching_calcs = []
+            for calc in all_calculators:
+                name = calc.get('name', '').lower()
+                category = calc.get('category', '').lower()
+                slug = calc.get('slug', '').lower()
+
+                # Check if query matches any field
+                if (query_lower in name or
+                    query_lower in category or
+                    query_lower in slug):
+                    matching_calcs.append({
+                        'id': calc.get('id'),
+                        'title': calc.get('name'),
+                        'category': calc.get('category'),
+                        'slug': calc.get('slug'),
+                        'url': calc.get('url', f"{self.base_url}/calc/{calc.get('id')}/{calc.get('slug')}")
+                    })
+
+                    if len(matching_calcs) >= limit:
+                        break
+
+            if matching_calcs:
+                logger.info(f"Found {len(matching_calcs)} calculators for '{query}' from catalog")
+                return matching_calcs[:limit]
+
+        except Exception as e:
+            logger.warning(f"Catalog search failed: {e}, falling back to web search")
+
+        # Fallback to web search if catalog search fails or returns no results
         page = await self.context.new_page()
 
         try:
@@ -190,7 +268,29 @@ class MDCalcClient:
             await page.close()
 
     async def get_calculator_details(self, calculator_id: str) -> Dict:
-        """Get calculator structure and current values."""
+        """
+        Get calculator details including a screenshot for visual understanding.
+
+        This is the KEY method for Claude's visual understanding approach.
+        Instead of parsing DOM elements, we take a screenshot that Claude
+        can SEE and understand using vision capabilities.
+
+        Args:
+            calculator_id (str): Calculator ID (e.g., "1752") or slug (e.g., "heart-score")
+
+        Returns:
+            Dict containing:
+                - title (str): Calculator name
+                - url (str): Calculator URL
+                - screenshot_base64 (str): JPEG screenshot encoded as base64 (~23KB)
+                - fields (List): Detected fields (may be empty for React apps)
+                - fields_detected (int): Number of fields found
+
+        Note:
+            The screenshot is the primary output. Field detection may return 0
+            for React-based calculators, which is expected. Claude uses vision
+            to understand the calculator structure from the screenshot.
+        """
         page = await self.context.new_page()
 
         try:
@@ -198,9 +298,8 @@ class MDCalcClient:
             if calculator_id.isdigit():
                 url = f"{self.base_url}/calc/{calculator_id}"
             else:
-                known_ids = self.config.get('calculator_ids', {})
-                calc_id = known_ids.get(calculator_id.replace('-', '_'), calculator_id)
-                url = f"{self.base_url}/calc/{calc_id}"
+                # Assume it's a slug and try to use it directly
+                url = f"{self.base_url}/calc/{calculator_id}"
 
             logger.info(f"Getting details for calculator: {calculator_id}")
             await page.goto(url, wait_until='networkidle')
@@ -376,7 +475,35 @@ class MDCalcClient:
             await page.close()
 
     async def execute_calculator(self, calculator_id: str, inputs: Dict) -> Dict:
-        """Execute calculator by clicking appropriate buttons."""
+        """
+        Execute calculator with provided input values.
+
+        This is a MECHANICAL function - it only clicks/fills what you specify.
+        YOU must first call get_calculator_details to SEE the calculator,
+        then map patient data to the EXACT button text or input values shown.
+
+        Args:
+            calculator_id (str): Calculator ID or slug
+            inputs (Dict): Mapped field values where:
+                - Keys: Field names (e.g., "age", "history", "troponin")
+                - Values: EXACT button text or numeric values
+                  Examples:
+                    - "age": "≥65" (button text)
+                    - "history": "Moderately suspicious" (button text)
+                    - "troponin": "≤1x normal limit" (button text)
+                    - "ldl": "120" (numeric input)
+
+        Returns:
+            Dict containing:
+                - success (bool): Whether calculation succeeded
+                - score (str): Calculated score (e.g., "5 points")
+                - risk (str): Risk category/percentage
+                - interpretation (str): Clinical interpretation
+
+        Important:
+            Values must match EXACTLY what appears in the calculator.
+            Use get_calculator_details first to see available options.
+        """
         page = await self.context.new_page()
 
         try:
@@ -384,9 +511,8 @@ class MDCalcClient:
             if calculator_id.isdigit():
                 url = f"{self.base_url}/calc/{calculator_id}"
             else:
-                known_ids = self.config.get('calculator_ids', {})
-                calc_id = known_ids.get(calculator_id.replace('-', '_'), calculator_id)
-                url = f"{self.base_url}/calc/{calc_id}"
+                # Assume it's a slug and try to use it directly
+                url = f"{self.base_url}/calc/{calculator_id}"
 
             logger.info(f"Executing calculator: {calculator_id}")
             await page.goto(url, wait_until='networkidle')
