@@ -518,89 +518,107 @@ class MDCalcClient:
             await page.goto(url, wait_until='networkidle')
             await page.wait_for_timeout(2000)  # Wait for React to render
 
-            # Map common input values to button text
-            value_mappings = {
-                # History
-                'slightly_suspicious': 'Slightly suspicious',
-                'moderately_suspicious': 'Moderately suspicious',
-                'highly_suspicious': 'Highly suspicious',
+            # DEBUG: Let's see what clickable elements are actually on the page
+            if logger.level <= logging.DEBUG:
+                all_clickables = await page.evaluate('''() => {
+                    // Try multiple possible selectors
+                    const buttons = Array.from(document.querySelectorAll('button')).map(b => ({text: b.textContent.trim(), tag: 'button'}));
+                    const divOptions = Array.from(document.querySelectorAll('div[class*="option"]')).map(d => ({text: d.textContent.trim(), tag: 'div.option', class: d.className}));
+                    const allDivs = Array.from(document.querySelectorAll('div')).filter(d => {
+                        const text = d.textContent.trim();
+                        return (text === 'Moderately suspicious' || text === '45-64' || text === 'Normal' ||
+                                text === '1-2 risk factors' || text.includes('normal limit'));
+                    }).map(d => ({text: d.textContent.trim(), tag: 'div', class: d.className}));
 
-                # Age
-                '45': '<45',
-                'less_than_45': '<45',
-                '<45': '<45',
-                '45-64': '45-64',
-                '45_64': '45-64',
-                '65': '≥65',
-                '>=65': '≥65',
-                'greater_than_65': '≥65',
-
-                # Risk factors
-                '0': 'No known risk factors',
-                'no': 'No known risk factors',
-                'none': 'No known risk factors',
-                '1': '1-2 risk factors',
-                '2': '1-2 risk factors',
-                '1-2': '1-2 risk factors',
-                '3': '≥3 risk factors or history of atherosclerotic disease',
-                '>=3': '≥3 risk factors or history of atherosclerotic disease'
-            }
-
-            # Special handling for ECG and Troponin based on field name
-            ecg_mappings = {
-                'normal': 'Normal',
-                'non_specific': 'Non-specific repolarization disturbance',
-                'significant': 'Significant ST deviation',
-                'abnormal': 'Non-specific repolarization disturbance'
-            }
-
-            troponin_mappings = {
-                'normal': '≤1x normal limit',
-                'elevated_1x': '1-2x normal limit',
-                '1x': '1-2x normal limit',
-                'elevated_2x': '>2x normal limit',
-                '2x': '>2x normal limit',
-                '>2x': '>2x normal limit'
-            }
+                    return {
+                        buttons: buttons.slice(0, 10),
+                        divOptions: divOptions.slice(0, 10),
+                        targetDivs: allDivs.slice(0, 10)
+                    };
+                }''')
+                logger.debug(f"  Buttons: {all_clickables.get('buttons', [])}")
+                logger.debug(f"  Div options: {all_clickables.get('divOptions', [])}")
+                logger.debug(f"  Target divs: {all_clickables.get('targetDivs', [])}")
 
             # Fill inputs and click buttons based on input values
             for field_name, value in inputs.items():
                 logger.info(f"Trying to set {field_name} to '{value}'")
 
-                # First try to fill numeric/text inputs
+                # For MDCalc calculators, most fields are buttons not inputs
+                # Only try input fields if the value looks numeric
                 filled = False
 
-                # Try various selectors for input fields
-                input_selectors = [
-                    f'input[name="{field_name}"]',
-                    f'input[id="{field_name}"]',
-                    f'input[placeholder*="{field_name}"]'
-                ]
+                # Check if value looks like a number (for numeric inputs like cholesterol values)
+                try:
+                    float(value)
+                    is_numeric = True
+                except (ValueError, TypeError):
+                    is_numeric = False
 
-                for selector in input_selectors:
+                # Only try input fields for numeric values
+                if is_numeric:
+                    # Try to find input field by label text or placeholder
+                    # For fields like "Total Cholesterol", "HDL Cholesterol"
                     try:
-                        if await page.locator(selector).count() > 0:
-                            await page.fill(selector, str(value))
-                            filled = True
-                            logger.info(f"  ✅ Filled input field: {field_name} = {value}")
-                            break
+                        # Strategy 1: Find input by label text
+                        label_element = await page.query_selector(f'text="{field_name}"')
+                        if label_element:
+                            # Find the input associated with this label
+                            input_element = await page.evaluate('''(label) => {
+                                // Check if label has a 'for' attribute
+                                const forAttr = label.getAttribute('for');
+                                if (forAttr) {
+                                    const input = document.getElementById(forAttr);
+                                    if (input) return input.id;
+                                }
+                                // Check if input is within the same container
+                                const container = label.closest('div');
+                                if (container) {
+                                    const input = container.querySelector('input');
+                                    if (input) {
+                                        // Give it a temporary ID so we can select it
+                                        const tempId = 'temp_' + Math.random().toString(36).substring(7);
+                                        input.id = tempId;
+                                        return tempId;
+                                    }
+                                }
+                                return null;
+                            }''', label_element)
+
+                            if input_element:
+                                await page.fill(f'#{input_element}', str(value))
+                                filled = True
+                                logger.info(f"  ✅ Filled input field: {field_name} = {value}")
                     except:
                         pass
 
-                # If not an input field, try button clicking
+                    # Strategy 2: Try various selectors
+                    if not filled:
+                        input_selectors = [
+                            f'input[placeholder*="{field_name}"]',
+                            f'input[aria-label*="{field_name}"]',
+                            # Try with normalized field name
+                            f'input[name="{field_name.lower().replace(" ", "_")}"]',
+                            f'input[name="{field_name.lower().replace(" ", "")}"]',
+                        ]
+
+                        for selector in input_selectors:
+                            try:
+                                if await page.locator(selector).count() > 0:
+                                    await page.fill(selector, str(value))
+                                    filled = True
+                                    logger.info(f"  ✅ Filled input field: {field_name} = {value}")
+                                    break
+                            except:
+                                pass
+
+                # If not filled (or not numeric), try button clicking
                 if not filled:
-                    # Normalize the field name
-                    field_name_normalized = field_name.lower().replace('_', ' ')
+                    # NO NORMALIZATION - use exact field names as passed
+                    # The value should already be the exact button text
+                    button_text = str(value)
 
-                    # Get the mapped button text based on field type
-                    if 'ecg' in field_name.lower() or 'ekg' in field_name.lower():
-                        button_text = ecg_mappings.get(str(value).lower(), str(value))
-                    elif 'troponin' in field_name.lower():
-                        button_text = troponin_mappings.get(str(value).lower(), str(value))
-                    else:
-                        button_text = value_mappings.get(str(value).lower(), str(value))
-
-                    logger.info(f"  Trying to click button for: '{button_text}'")
+                    logger.info(f"  Trying to click button '{button_text}' for field '{field_name}'")
 
                     # Try multiple strategies to click the button
                     clicked = False
@@ -608,69 +626,222 @@ class MDCalcClient:
                     # Strategy 1: Direct button text
                     try:
                         button_selector = f"button:has-text('{button_text}')"
-                        if await page.locator(button_selector).count() > 0:
+                        count = await page.locator(button_selector).count()
+                        logger.debug(f"  Strategy 1: Found {count} buttons with text '{button_text}'")
+                        if count > 0:
                             await page.click(button_selector)
                             clicked = True
                             logger.info(f"  ✅ Clicked button: {button_text}")
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"  Strategy 1 failed: {e}")
 
-                    # Strategy 2: Div with calc_option class
+                    # Strategy 2: Any clickable div with exact text (MDCalc uses divs for buttons)
                     if not clicked:
                         try:
-                            option_selector = f"div[class*='calc_option']:has-text('{button_text}')"
-                            if await page.locator(option_selector).count() > 0:
-                                await page.click(option_selector)
-                                clicked = True
-                                logger.info(f"  ✅ Clicked option: {button_text}")
-                        except:
-                            pass
+                            # MDCalc uses divs as buttons, not actual button elements
+                            # Use text= for exact match, find the innermost element
+                            option_selector = f"div:text-is('{button_text}')"  # Exact text match
+                            elements = page.locator(option_selector)
+                            count = await elements.count()
+                            logger.debug(f"  Strategy 2: Found {count} divs with exact text '{button_text}'")
 
-                    # Strategy 3: Any clickable element with the text
-                    if not clicked:
-                        try:
-                            any_selector = f"*:has-text('{button_text}'):not(body):not(html)"
-                            elements = await page.locator(any_selector).all()
-                            for element in elements:
-                                try:
+                            # If there's only one element, click it (no ambiguity)
+                            if count == 1:
+                                element = elements.first
+                                # Check if already selected - check computed styles more carefully
+                                element_state = await element.evaluate('''el => {
+                                    const style = window.getComputedStyle(el);
+                                    const bgColor = style.backgroundColor;
+
+                                    // MDCalc uses teal/green for selected state
+                                    // rgb(26, 188, 156) is the teal color
+                                    // Check if background is teal/green (selected state)
+                                    const isTeal = bgColor === 'rgb(26, 188, 156)' ||
+                                                  bgColor === 'rgba(26, 188, 156, 1)';
+
+                                    // Also check parent element for selection state
+                                    let parentHasTeal = false;
+                                    if (el.parentElement) {
+                                        const parentBg = window.getComputedStyle(el.parentElement).backgroundColor;
+                                        parentHasTeal = parentBg === 'rgb(26, 188, 156)' ||
+                                                       parentBg === 'rgba(26, 188, 156, 1)';
+                                    }
+
+                                    return isTeal || parentHasTeal;
+                                }''')
+
+                                if element_state:
+                                    clicked = True
+                                    logger.info(f"  ✅ Option already selected: {button_text}")
+                                else:
                                     await element.click()
                                     clicked = True
-                                    logger.info(f"  ✅ Clicked element with text: {button_text}")
+                                    logger.info(f"  ✅ Clicked option: {button_text}")
+                            elif count > 1:
+                                # Multiple elements found - skip to Strategy 3 for context-aware clicking
+                                logger.debug(f"  Multiple elements found, need context-aware selection")
+                        except Exception as e:
+                            logger.debug(f"  Strategy 2 failed: {e}")
+
+                    # Strategy 3: Context-aware search - find button near the field label
+                    if not clicked:
+                        # The field_name should be the exact label seen in the UI
+                        logger.info(f"  Looking for {button_text} button near field '{field_name}'")
+
+                        try:
+                            # Get all buttons/divs with this text
+                            # MDCalc uses divs as clickable options
+                            button_locator = page.locator(f"button:text-is('{button_text}'), div:text-is('{button_text}')")
+                            all_buttons = await button_locator.element_handles()
+
+                            logger.debug(f"  Strategy 3: Found {len(all_buttons)} elements with text '{button_text}'")
+
+                            for button in all_buttons:
+                                # Check if this button is near the field label
+                                is_in_field = await button.evaluate('''(el, fieldName) => {
+                                    // Walk up the DOM to find if we're in the right field
+                                    let parent = el.parentElement;
+                                    let maxLevels = 5;  // Only go up 5 levels for speed
+                                    while (parent && maxLevels > 0) {
+                                        // Check if the parent contains the field name
+                                        if (parent.textContent.includes(fieldName)) {
+                                            return true;
+                                        }
+                                        parent = parent.parentElement;
+                                        maxLevels--;
+                                    }
+                                    return false;
+                                }''', field_name)
+
+                                if is_in_field:
+                                    # Check if already selected using exact RGB values
+                                    button_state = await button.evaluate('''el => {
+                                        const bgColor = window.getComputedStyle(el).backgroundColor;
+                                        const parentBgColor = el.parentElement ?
+                                            window.getComputedStyle(el.parentElement).backgroundColor : '';
+
+                                        // MDCalc uses rgb(26, 188, 156) for selected state
+                                        const isTeal = bgColor === 'rgb(26, 188, 156)' ||
+                                                      bgColor === 'rgba(26, 188, 156, 1)' ||
+                                                      parentBgColor === 'rgb(26, 188, 156)' ||
+                                                      parentBgColor === 'rgba(26, 188, 156, 1)';
+
+                                        return isTeal;
+                                    }''')
+
+                                    if button_state:
+                                        clicked = True
+                                        logger.info(f"  ✅ {button_text} already selected for field '{field_name}'")
+                                    else:
+                                        await button.click()
+                                        clicked = True
+                                        logger.info(f"  ✅ Clicked {button_text} for field '{field_name}'")
                                     break
-                                except:
-                                    continue
-                        except:
-                            pass
+
+                        except Exception as e:
+                            logger.debug(f"  Strategy 3 failed: {e}")
 
                     if not clicked:
                         logger.warning(f"  ⚠️ Could not click option for {field_name}: {button_text}")
 
-                # Wait for React to update
-                await page.wait_for_timeout(500)
+                # Wait for React to update (reduced for speed)
+                await page.wait_for_timeout(100)
 
-            # Wait for results to update
-            await page.wait_for_timeout(1000)
+            # Wait for results to update (MDCalc takes time to calculate)
+            await page.wait_for_timeout(2000)
 
-            # Extract results
+            # Take a screenshot of the result (for debugging/validation)
+            try:
+                result_screenshot = await page.screenshot(
+                    type='jpeg',
+                    quality=85,
+                    full_page=False  # Just viewport to capture results
+                )
+                # Save to screenshots directory if it exists (for tests)
+                screenshots_dir = Path(__file__).parent.parent / "tests" / "screenshots"
+                if screenshots_dir.exists():
+                    result_path = screenshots_dir / f"{calculator_id}_result.jpg"
+                    with open(result_path, 'wb') as f:
+                        f.write(result_screenshot)
+                    logger.info(f"📸 Result screenshot saved to: {result_path}")
+            except Exception as e:
+                logger.warning(f"Could not capture result screenshot: {e}")
+
+            # Extract results - look for result containers and score displays
             results = await page.evaluate('''
                 () => {
-                    // Look for score text
-                    const scoreElements = Array.from(document.querySelectorAll('*')).filter(
-                        el => /\\d+ points?/.test(el.textContent) && el.children.length === 0
-                    );
-                    const score = scoreElements.length > 0 ? scoreElements[0].textContent.trim() : null;
+                    let score = null;
+                    let risk = null;
+                    let interpretation = null;
 
-                    // Look for risk text
-                    const riskElements = Array.from(document.querySelectorAll('*')).filter(
-                        el => /Risk.*%/.test(el.textContent) && el.textContent.length < 200
-                    );
-                    const risk = riskElements.length > 0 ? riskElements[0].textContent.trim() : null;
+                    // Strategy 1: Look for result containers (calc_result class pattern)
+                    // MDCalc consistently uses classes with "calc_result" in them
+                    const resultContainers = document.querySelectorAll('[class*="calc_result"], [class*="result_container"], [class*="score_display"]');
 
-                    // Look for interpretation
-                    const interpretElements = Array.from(document.querySelectorAll('*')).filter(
-                        el => /(Low|Moderate|High) Score/.test(el.textContent)
-                    );
-                    const interpretation = interpretElements.length > 0 ? interpretElements[0].textContent.trim() : null;
+                    for (const container of resultContainers) {
+                        // Look for heading elements (h1, h2, h3) within the result container
+                        // These typically contain the score
+                        const headings = container.querySelectorAll('h1, h2, h3');
+                        for (const heading of headings) {
+                            const text = heading.textContent.trim();
+                            // Match patterns like "8 points", "8", etc.
+                            const scoreMatch = text.match(/^(\\d+)\\s*(points?|pts?)?/i);
+                            if (scoreMatch && !score) {
+                                score = scoreMatch[1] + ' points';
+
+                                // Also look for risk/interpretation in the same container
+                                const containerText = container.textContent;
+                                // Extract risk percentage if present
+                                const riskMatch = containerText.match(/(\\d+\\.?\\d*)%.*?(risk|per year)/i);
+                                if (riskMatch && !risk) {
+                                    risk = riskMatch[0];
+                                }
+                                break;
+                            }
+                        }
+                        if (score) break; // Found score, stop looking
+                    }
+
+                    // Strategy 2: If no result container found, look for prominent score displays
+                    if (!score) {
+                        // Look for large text elements containing scores
+                        const allElements = document.querySelectorAll('div, span, h1, h2, h3, p');
+                        for (const el of allElements) {
+                            const text = el.textContent.trim();
+
+                            // Skip long text (definitely not a score)
+                            if (text.length > 50) continue;
+
+                            // Check if it matches score pattern
+                            const scoreMatch = text.match(/^(\\d+)\\s*(points?|pts?)?$/i);
+                            if (scoreMatch) {
+                                // Verify it's prominently displayed
+                                const style = window.getComputedStyle(el);
+                                const fontSize = parseFloat(style.fontSize);
+                                const isVisible = style.display !== 'none' && style.visibility !== 'hidden';
+
+                                if (isVisible && fontSize >= 24) { // Large font for scores
+                                    score = scoreMatch[1] + ' points';
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Look for interpretation (Low/Moderate/High Score)
+                    if (!interpretation) {
+                        const interpElements = document.querySelectorAll('*');
+                        for (const el of interpElements) {
+                            const text = el.textContent.trim();
+                            if (text.length < 100) {
+                                const match = text.match(/(Low|Moderate|High)\\s*(Score|Risk)\\s*\\(?(\\d+-?\\d*\\s*points?)\\)?/i);
+                                if (match) {
+                                    interpretation = match[0];
+                                    break;
+                                }
+                            }
+                        }
+                    }
 
                     return {
                         score: score,
