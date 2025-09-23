@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional
 import logging
+import base64
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -294,6 +295,48 @@ class MDCalcClient:
                     };
                 }
             ''')
+
+            # Take a screenshot of the calculator form
+            screenshot_bytes = None
+            try:
+                # Try to find just the calculator form area (not the whole page)
+                # Look for the actual form container
+                calc_selectors = [
+                    'div[class*="calc_container"]',  # MDCalc's main calc container
+                    'div[class*="calculator-form"]',
+                    'form',
+                    '.calc-main',
+                    'main'
+                ]
+
+                calc_container = None
+                for selector in calc_selectors:
+                    calc_container = await page.query_selector(selector)
+                    if calc_container:
+                        break
+
+                if calc_container:
+                    # Take screenshot of just the calculator form
+                    screenshot_bytes = await calc_container.screenshot(
+                        type='jpeg',
+                        quality=30  # Lower quality for smaller size
+                    )
+                else:
+                    # Fallback: crop to just the center portion of viewport
+                    # This avoids headers, footers, ads
+                    screenshot_bytes = await page.screenshot(
+                        type='jpeg',
+                        quality=30,  # Lower quality
+                        clip={'x': 200, 'y': 200, 'width': 800, 'height': 600}  # Crop to center
+                    )
+
+                # Convert to base64
+                if screenshot_bytes:
+                    details['screenshot_base64'] = base64.b64encode(screenshot_bytes).decode('utf-8')
+                    logger.info(f"Screenshot captured: {len(screenshot_bytes)} bytes")
+
+            except Exception as e:
+                logger.warning(f"Failed to capture screenshot: {e}")
 
             logger.info(f"Found {len(details.get('fields', []))} fields for {details.get('title', 'Unknown')}")
             return details

@@ -43,6 +43,9 @@ build/
 htmlcov/
 *.cover
 
+# Test screenshots - Generated during testing
+mcp-servers/mdcalc-automation-mcp/tests/screenshots/
+
 # Credentials
 credentials.json
 *.pem

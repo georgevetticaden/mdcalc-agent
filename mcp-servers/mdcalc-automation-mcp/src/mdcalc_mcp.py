@@ -201,16 +201,33 @@ class MDCalcMCPServer:
 
                 details = await self.client.get_calculator_details(calculator_id)
 
+                # Build response with screenshot as image content
+                content = []
+
+                # Add the screenshot as an image if available
+                if details.get('screenshot_base64'):
+                    content.append({
+                        'type': 'image',
+                        'data': details['screenshot_base64'],
+                        'mimeType': 'image/jpeg'
+                    })
+
+                # Add text details (without the base64 data)
+                calculator_info = {
+                    'success': True,
+                    'title': details.get('title'),
+                    'url': details.get('url'),
+                    'fields_detected': len(details.get('fields', [])),
+                    'screenshot_included': bool(details.get('screenshot_base64'))
+                }
+
+                content.append({
+                    'type': 'text',
+                    'text': json.dumps(calculator_info, indent=2)
+                })
+
                 return {
-                    'content': [
-                        {
-                            'type': 'text',
-                            'text': json.dumps({
-                                'success': True,
-                                'calculator': details
-                            }, indent=2)
-                        }
-                    ]
+                    'content': content
                 }
 
             elif tool_name == 'mdcalc_execute':
