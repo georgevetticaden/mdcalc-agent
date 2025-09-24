@@ -56,10 +56,13 @@ class MDCalcMCPServer:
     async def initialize(self):
         """Initialize the MDCalc client."""
         if not self.initialized:
+            import os
             self.client = MDCalcClient()
-            await self.client.initialize(headless=True)
+            # Check environment variable for headless mode
+            headless = os.environ.get('MDCALC_HEADLESS', 'true').lower() == 'true'
+            await self.client.initialize(headless=headless)
             self.initialized = True
-            logger.info("MDCalc MCP Server initialized")
+            logger.info(f"MDCalc MCP Server initialized (headless={headless})")
 
     async def handle_request(self, request: Dict) -> Dict:
         """Handle incoming JSON-RPC requests."""
