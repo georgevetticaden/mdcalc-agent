@@ -19,7 +19,17 @@ WINDOW_Y=50
 # Chrome executable path (macOS)
 CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
-# Launch Chrome with remote debugging
+# Use a persistent profile directory for session storage
+PROFILE_DIR="$HOME/Library/Application Support/MDCalc-Demo-Chrome"
+
+# Create profile directory if it doesn't exist
+mkdir -p "$PROFILE_DIR"
+
+echo "📁 Using Chrome profile at: $PROFILE_DIR"
+echo "   (Session data will be preserved between runs)"
+echo ""
+
+# Launch Chrome with remote debugging and persistent profile
 "$CHROME_PATH" \
     --remote-debugging-port=9222 \
     --window-size=$WINDOW_WIDTH,$WINDOW_HEIGHT \
@@ -34,7 +44,7 @@ CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
     --disable-extensions \
     --disable-features=TranslateUI \
     --disable-ipc-flooding-protection \
-    --user-data-dir="$HOME/.mdcalc-demo-profile" \
+    --user-data-dir="$PROFILE_DIR" \
     https://www.mdcalc.com &
 
 # Give Chrome time to start
