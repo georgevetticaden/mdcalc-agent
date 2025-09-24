@@ -255,27 +255,9 @@ class MDCalcClient:
                     const resultRows = document.querySelectorAll('.calculatorRow_row-container__HM_dC');
 
                     if (resultRows.length === 0) {{
-                        // Fallback to links within main content if no specific rows found
-                        const mainLinks = document.querySelectorAll('main a[href*="/calc/"]');
-                        // Filter out navigation and non-result links
-                        const filteredLinks = Array.from(mainLinks).filter(link => {{
-                            const text = link.textContent.trim();
-                            // Must have substantial text to be a real result
-                            return text.length > 20 && !text.includes('Popular') && !text.includes('Recent');
-                        }});
-
-                        return filteredLinks.slice(0, limit).map(link => {{
-                            const href = link.href;
-                            const idMatch = href.match(/calc\\/(\\d+)/);
-                            const slugMatch = href.match(/calc\\/\\d+\\/([^/]+)/);
-
-                            return {{
-                                title: link.textContent.trim(),
-                                url: href,
-                                id: idMatch ? idMatch[1] : null,
-                                slug: slugMatch ? slugMatch[1] : null
-                            }};
-                        }});
+                        // No results found - return empty array
+                        // This is correct behavior when search has no matches
+                        return [];
                     }}
 
                     // Process the result rows
