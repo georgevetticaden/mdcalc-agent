@@ -161,6 +161,113 @@ class KnownCalculatorTests:
         self.test_results.append(result)
         return result
 
+    async def test_sofa_score(self) -> Dict:
+        """
+        Test SOFA Score (ID: 691) - Mixed numeric and dropdown inputs
+        Using exact inputs from the demo scenario logs
+        """
+        print("\n" + "="*60)
+        print("Testing SOFA Score (Mixed numeric/dropdown)")
+        print("="*60)
+
+        result = {"calculator": "SOFA Score", "success": False}
+
+        try:
+            # Get calculator details
+            print("Getting calculator details...")
+            details = await self.client.get_calculator_details("691")
+            print(f"✅ Title: {details.get('title', 'Unknown')}")
+            print(f"✅ Found {len(details.get('fields', []))} fields")
+
+            # Execute with exact inputs from the logs
+            # Note: MDCalc uses regular hyphens (-) for integer ranges, en dash (–) for decimal ranges
+            print("\nExecuting with test data from demo scenario...")
+            test_inputs = {
+                'PaO₂': '90',  # Numeric input field
+                'FiO₂': '60',  # Numeric input field
+                'On mechanical ventilation': 'Yes',
+                'Platelets, ×10³/μL': '50-99',  # Regular hyphen for integer range
+                'Glasgow Coma Score': '10-12',  # Regular hyphen for integer range (also note capital S in Score)
+                'Bilirubin, mg/dL': '2.0–5.9 (33-101)',  # En dash for decimal range, hyphen in parentheses
+                'Mean arterial pressure OR administration of vasoactive agents required': 'MAP <70 mmHg',  # Note: "vasoactive agents" not "vasopressors", and includes "mmHg"
+                'Creatinine, mg/dL (or urine output)': '2.0–3.4 (171-299)'  # En dash for decimal range, hyphen in parentheses
+            }
+
+            execution_result = await self.client.execute_calculator("691", test_inputs)
+
+            if execution_result.get('success'):
+                result['success'] = True
+                result['score'] = execution_result.get('score')
+                print(f"✅ Execution successful! SOFA Score: {execution_result.get('score')}")
+            else:
+                print("⚠️ Execution completed but no score extracted")
+
+        except Exception as e:
+            result['error'] = str(e)
+            print(f"❌ Error: {e}")
+
+        self.test_results.append(result)
+        return result
+
+    async def test_apache_ii(self) -> Dict:
+        """
+        Test APACHE II (ID: 1868) - Complex calculator with many numeric inputs
+        Using exact inputs from the demo scenario logs
+        """
+        print("\n" + "="*60)
+        print("Testing APACHE II (Complex numeric inputs)")
+        print("="*60)
+
+        result = {"calculator": "APACHE II", "success": False}
+
+        try:
+            # Get calculator details
+            print("Getting calculator details...")
+            details = await self.client.get_calculator_details("1868")
+            print(f"✅ Title: {details.get('title', 'Unknown')}")
+            print(f"✅ Found {len(details.get('fields', []))} fields")
+
+            # Execute with exact inputs from the logs
+            # Based on the screenshot, APACHE II uses text inputs with normal ranges shown as placeholders
+            print("\nExecuting with test data from demo scenario...")
+            test_inputs = {
+                'Age': '68',  # Numeric input field
+                'Temperature': '38.5',  # Numeric input (Norm: 97-100)
+                'Mean arterial pressure': '65',  # Numeric input (Norm: 70-100)
+                'pH': '7.32',  # Numeric input (Norm: 7.38-7.44)
+                'Heart rate/pulse': '115',  # Numeric input (Norm: 60-100)
+                'Respiratory rate': '28',  # Numeric input (Norm: 12-20)
+                'Sodium': '135',  # Numeric input (Norm: 136-145)
+                'Potassium': '4.1',  # Numeric input (Norm: 3.5-5.2)
+                'Creatinine': '1.8',  # Numeric input (Norm: 0.7-1.3)
+                'Acute renal failure': 'Yes',  # Yes/No toggle
+                'Hematocrit': '32',  # Numeric input (Norm: 36-51)
+                'White blood cell count': '14',  # Numeric input (Norm: 3.7-10.7)
+                'Glasgow Coma Scale': '10',  # Numeric input (Norm: 3-15)
+                'FiO₂': '≥50%',  # Dropdown selection
+                # After selecting FiO₂ ≥50%, A-a gradient field appears with range buttons
+                'A-a gradient': '<200',  # Button selection for A-a gradient
+                # Additional fields that are visible in the form
+                'History of severe organ failure or immunocompromise': 'No',  # Yes/No toggle
+                'Type of admission': 'Elective postoperative',  # Dropdown/button selection
+            }
+
+            execution_result = await self.client.execute_calculator("1868", test_inputs)
+
+            if execution_result.get('success'):
+                result['success'] = True
+                result['score'] = execution_result.get('score')
+                print(f"✅ Execution successful! APACHE II Score: {execution_result.get('score')}")
+            else:
+                print("⚠️ Execution completed but no score extracted")
+
+        except Exception as e:
+            result['error'] = str(e)
+            print(f"❌ Error: {e}")
+
+        self.test_results.append(result)
+        return result
+
     async def test_search_functionality(self) -> Dict:
         """
         Test search functionality
@@ -228,6 +335,16 @@ class KnownCalculatorTests:
 
 async def main():
     """Run tests for known calculators."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Test MDCalc calculators')
+    parser.add_argument('--calc', type=str, help='Specific calculator to test (heart, ldl, cha2ds2, sofa, apache, search)')
+    parser.add_argument('--headless', action='store_true', help='Run in headless mode')
+    parser.add_argument('--no-headless', dest='headless', action='store_false', help='Run with browser visible')
+    parser.set_defaults(headless=None)
+
+    args = parser.parse_args()
+
     tester = KnownCalculatorTests()
 
     print("\n" + "="*60)
@@ -236,18 +353,43 @@ async def main():
     print("(Claude handles 'any calculator' with vision)")
     print("="*60)
 
-    # Ask about headless mode
-    headless_input = input("\nRun headless? (y/n, default=y): ").strip().lower()
-    headless = headless_input != 'n'
+    # Determine headless mode
+    if args.headless is None:
+        # Ask if not specified via command line
+        headless_input = input("\nRun headless? (y/n, default=y): ").strip().lower()
+        headless = headless_input != 'n'
+    else:
+        headless = args.headless
 
     await tester.initialize(headless=headless)
 
     try:
-        # Run all tests
-        await tester.test_search_functionality()
-        await tester.test_heart_score()
-        await tester.test_ldl_calculated()
-        await tester.test_cha2ds2_vasc()
+        # Run specific test or all tests
+        if args.calc:
+            calc_map = {
+                'heart': tester.test_heart_score,
+                'ldl': tester.test_ldl_calculated,
+                'cha2ds2': tester.test_cha2ds2_vasc,
+                'sofa': tester.test_sofa_score,
+                'apache': tester.test_apache_ii,
+                'search': tester.test_search_functionality
+            }
+
+            if args.calc.lower() in calc_map:
+                print(f"\nRunning specific test: {args.calc}")
+                await calc_map[args.calc.lower()]()
+            else:
+                print(f"Unknown calculator: {args.calc}")
+                print(f"Available options: {', '.join(calc_map.keys())}")
+                return
+        else:
+            # Run all tests
+            await tester.test_search_functionality()
+            await tester.test_heart_score()
+            await tester.test_ldl_calculated()
+            await tester.test_cha2ds2_vasc()
+            await tester.test_sofa_score()
+            await tester.test_apache_ii()
 
         # Print summary
         tester.print_summary()

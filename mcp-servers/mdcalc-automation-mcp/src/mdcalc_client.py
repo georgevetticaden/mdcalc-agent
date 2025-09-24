@@ -600,68 +600,280 @@ class MDCalcClient:
                 logger.info(f"Setting {field_name} to '{value}'")
                 filled = False
 
-                # Check if value is numeric (for input fields)
+                # Check if value is numeric - if so, try input fields first
                 try:
-                    float(value)
-                    is_numeric = True
+                    float(str(value))  # Convert to string first in case it's not
+                    is_numeric_value = True
                 except (ValueError, TypeError):
-                    is_numeric = False
+                    is_numeric_value = False
 
-                # Only try input fields for numeric values
-                if is_numeric:
-                    # Try to find input field by label text or placeholder
-                    # For fields like "Total Cholesterol", "HDL Cholesterol"
+                logger.info(f"  Field type detection: is_numeric_value={is_numeric_value}")
+
+                # For numeric values, always try input fields first
+                # The screenshot will show which fields are inputs vs buttons
+                if is_numeric_value:
+                    logger.info(f"  Value '{value}' is numeric, trying input fields first")
+
+                    # Strategy 1: Find the CORRECT input field by better field-to-input association
                     try:
-                        # Strategy 1: Find input by label text
-                        label_element = await page.query_selector(f'text="{field_name}"')
-                        if label_element:
-                            # Find the input associated with this label
-                            input_element = await page.evaluate('''(label) => {
-                                // Check if label has a 'for' attribute
-                                const forAttr = label.getAttribute('for');
-                                if (forAttr) {
-                                    const input = document.getElementById(forAttr);
-                                    if (input) return input.id;
+                        # Look for the field label and find associated input
+                        # Pass parameters as a single object
+                        filled = await page.evaluate('''({fieldName, value}) => {
+                            console.log('Looking for field:', fieldName, 'with value:', value);
+
+                            // First, collect ALL visible inputs on the page with their positions
+                            const allInputs = Array.from(document.querySelectorAll('input[type="text"], input[type="number"], input:not([type])')).filter(inp => {
+                                const rect = inp.getBoundingClientRect();
+                                return rect.width > 0 && rect.height > 0 && !inp.disabled && !inp.readOnly;
+                            }).map(input => {
+                                const rect = input.getBoundingClientRect();
+                                return {
+                                    element: input,
+                                    top: rect.top,
+                                    left: rect.left,
+                                    placeholder: input.placeholder || '',
+                                    value: input.value || '',
+                                    id: input.id || '',
+                                    name: input.name || ''
+                                };
+                            });
+
+                            console.log('Total visible inputs:', allInputs.length);
+
+                            // Find elements that contain the field name - be more precise
+                            const labels = Array.from(document.querySelectorAll('*')).filter(el => {
+                                const text = (el.textContent || '').trim();
+                                // Only consider elements that directly contain the text (not in children)
+                                const directText = Array.from(el.childNodes)
+                                    .filter(node => node.nodeType === Node.TEXT_NODE)
+                                    .map(node => node.textContent.trim())
+                                    .join(' ').trim();
+
+                                // Match if the direct text is exactly or starts with the field name
+                                return (directText === fieldName ||
+                                       directText.startsWith(fieldName) ||
+                                       text === fieldName) &&
+                                       text.length < fieldName.length + 100 &&
+                                       el.tagName !== 'SCRIPT' &&
+                                       el.tagName !== 'STYLE';
+                            });
+
+                            console.log('Found', labels.length, 'potential labels for', fieldName);
+
+                            // Sort labels by specificity and position
+                            labels.sort((a, b) => {
+                                const aText = a.textContent.trim();
+                                const bText = b.textContent.trim();
+                                const aRect = a.getBoundingClientRect();
+                                const bRect = b.getBoundingClientRect();
+
+                                // Exact match gets highest priority
+                                if (aText === fieldName && bText !== fieldName) return -1;
+                                if (bText === fieldName && aText !== fieldName) return 1;
+
+                                // Then prefer elements higher on the page (smaller top value)
+                                if (Math.abs(aRect.top - bRect.top) > 10) {
+                                    return aRect.top - bRect.top;
                                 }
-                                // Check if input is within the same container
-                                const container = label.closest('div');
-                                if (container) {
-                                    const input = container.querySelector('input');
+
+                                // Then prefer shorter text (less extra content)
+                                return aText.length - bText.length;
+                            });
+
+                            for (const label of labels) {
+                                // First check if this label element has a direct 'for' attribute
+                                if (label.tagName === 'LABEL' && label.getAttribute('for')) {
+                                    const inputId = label.getAttribute('for');
+                                    const input = document.getElementById(inputId);
                                     if (input) {
-                                        // Give it a temporary ID so we can select it
-                                        const tempId = 'temp_' + Math.random().toString(36).substring(7);
-                                        input.id = tempId;
-                                        return tempId;
+                                        console.log('Found input by for attribute:', inputId);
+                                        // Fill and return
+                                        input.value = value;
+                                        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                                            window.HTMLInputElement.prototype,
+                                            'value'
+                                        ).set;
+                                        nativeInputValueSetter.call(input, value);
+                                        input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                                        input.focus();
+                                        input.blur();
+                                        return true;
                                     }
                                 }
-                                return null;
-                            }''', label_element)
 
-                            if input_element:
-                                await page.fill(f'#{input_element}', str(value))
-                                filled = True
-                                logger.info(f"  ✅ Filled input field: {field_name} = {value}")
-                    except:
-                        pass
+                                // Look for the CLOSEST input field to this label
+                                // Start from the label itself and search siblings and parent containers
 
-                    # Strategy 2: Try various selectors
+                                // Check immediate siblings first
+                                let nextSibling = label.nextElementSibling;
+                                while (nextSibling && nextSibling.nodeType === 1) {
+                                    if (nextSibling.tagName === 'INPUT' &&
+                                        (nextSibling.type === 'text' || nextSibling.type === 'number' || !nextSibling.type)) {
+                                        const rect = nextSibling.getBoundingClientRect();
+                                        if (rect.width > 0 && rect.height > 0 && !nextSibling.disabled && !nextSibling.readOnly) {
+                                            console.log('Found adjacent input for', fieldName);
+                                            // Check if this input is already filled
+                                            if (nextSibling.value && nextSibling.value !== '' && nextSibling.value !== value) {
+                                                console.log('Input already has value:', nextSibling.value, 'skipping...');
+                                                break;
+                                            }
+                                            // Fill the input
+                                            nextSibling.value = value;
+                                            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                                                window.HTMLInputElement.prototype,
+                                                'value'
+                                            ).set;
+                                            nativeInputValueSetter.call(nextSibling, value);
+                                            nextSibling.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                                            nextSibling.dispatchEvent(new Event('change', { bubbles: true }));
+                                            nextSibling.focus();
+                                            nextSibling.blur();
+                                            return true;
+                                        }
+                                    }
+                                    // Check if next sibling contains an input
+                                    const inputInSibling = nextSibling.querySelector('input[type="text"], input[type="number"], input:not([type])');
+                                    if (inputInSibling) {
+                                        const rect = inputInSibling.getBoundingClientRect();
+                                        if (rect.width > 0 && rect.height > 0 && !inputInSibling.disabled && !inputInSibling.readOnly) {
+                                            // Check if already filled
+                                            if (inputInSibling.value && inputInSibling.value !== '' && inputInSibling.value !== value) {
+                                                console.log('Input already has value:', inputInSibling.value, 'skipping...');
+                                                break;
+                                            }
+                                            console.log('Found input in sibling for', fieldName);
+                                            inputInSibling.value = value;
+                                            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                                                window.HTMLInputElement.prototype,
+                                                'value'
+                                            ).set;
+                                            nativeInputValueSetter.call(inputInSibling, value);
+                                            inputInSibling.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                                            inputInSibling.dispatchEvent(new Event('change', { bubbles: true }));
+                                            inputInSibling.focus();
+                                            inputInSibling.blur();
+                                            return true;
+                                        }
+                                    }
+                                    nextSibling = nextSibling.nextElementSibling;
+                                }
+
+                                // Find the closest UNFILLED input to this label
+                                const labelRect = label.getBoundingClientRect();
+
+                                // Find all unfilled inputs and calculate their distance to this label
+                                const unfilledInputs = allInputs.filter(inp => !inp.value || inp.value === '');
+
+                                if (unfilledInputs.length > 0) {
+                                    // Calculate distance for each unfilled input
+                                    const inputsWithDistance = unfilledInputs.map(inp => {
+                                        // Calculate Euclidean distance but prioritize vertical alignment
+                                        const verticalDist = Math.abs(inp.top - labelRect.top);
+                                        const horizontalDist = Math.abs(inp.left - labelRect.left);
+                                        // Weight vertical distance less since labels are often above/below inputs
+                                        const distance = Math.sqrt(verticalDist * verticalDist + horizontalDist * horizontalDist * 0.5);
+                                        return {
+                                            ...inp,
+                                            distance: distance,
+                                            verticalDist: verticalDist
+                                        };
+                                    });
+
+                                    // Sort by distance and find the closest one
+                                    inputsWithDistance.sort((a, b) => a.distance - b.distance);
+
+                                    const closest = inputsWithDistance[0];
+
+                                    // Only fill if the closest input is reasonably close (within 200px)
+                                    if (closest && closest.distance < 300) {
+                                        console.log('Found closest unfilled input for', fieldName, 'distance:', closest.distance);
+                                        console.log('Input details - placeholder:', closest.placeholder, 'current value:', closest.value);
+
+                                        const input = closest.element;
+                                        input.value = value;
+                                        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                                            window.HTMLInputElement.prototype,
+                                            'value'
+                                        ).set;
+                                        nativeInputValueSetter.call(input, value);
+                                        input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                                        input.focus();
+                                        input.blur();
+                                        console.log('Successfully filled', fieldName, 'with', value);
+                                        return true;
+                                    }
+                                }
+                            }
+
+                            console.log('No input field found for:', fieldName);
+                            return false;
+                        }''', {'fieldName': field_name, 'value': str(value)})
+
+                        if filled:
+                            logger.info(f"  ✅ Filled numeric input field: {field_name} = {value}")
+                            # Wait a bit for React to recalculate derived values (like P/F ratio)
+                            await page.wait_for_timeout(500)
+                        else:
+                            logger.info(f"  Could not find input field for numeric value {field_name}")
+                    except Exception as e:
+                        logger.warning(f"  Strategy 1 (find input near label) failed: {e}")
+
+                    # Strategy 2: Try various generic selectors (no calculator-specific patterns)
                     if not filled:
                         input_selectors = [
+                            # Standard patterns based on field name
                             f'input[placeholder*="{field_name}"]',
                             f'input[aria-label*="{field_name}"]',
-                            # Try with normalized field name
                             f'input[name="{field_name.lower().replace(" ", "_")}"]',
                             f'input[name="{field_name.lower().replace(" ", "")}"]',
+
+                            # Generic numeric input patterns
+                            'input[type="number"]',
+                            'input[type="text"][inputmode="decimal"]',
+                            'input[type="text"][inputmode="numeric"]'
                         ]
 
                         for selector in input_selectors:
                             try:
-                                if await page.locator(selector).count() > 0:
-                                    await page.fill(selector, str(value))
-                                    filled = True
-                                    logger.info(f"  ✅ Filled input field: {field_name} = {value}")
-                                    break
-                            except:
+                                elements = page.locator(selector)
+                                count = await elements.count()
+                                if count > 0:
+                                    # If there are multiple, try to find the right one by context
+                                    if count == 1:
+                                        await elements.first.fill(str(value))
+                                        filled = True
+                                        logger.info(f"  ✅ Filled input field: {field_name} = {value}")
+                                        break
+                                    else:
+                                        # Multiple matches - find the one near our field label
+                                        for i in range(count):
+                                            element = elements.nth(i)
+                                            is_correct = await element.evaluate('''(el, fieldName) => {
+                                                // Check if this input is near the field name
+                                                const container = el.closest('div[class*="field"], div[class*="input"], .form-group, .input-group');
+                                                if (container && container.textContent.includes(fieldName)) {
+                                                    return true;
+                                                }
+                                                // Check previous sibling for label
+                                                const label = el.previousElementSibling;
+                                                if (label && label.textContent.includes(fieldName)) {
+                                                    return true;
+                                                }
+                                                return false;
+                                            }''', field_name)
+
+                                            if is_correct:
+                                                await element.fill(str(value))
+                                                filled = True
+                                                logger.info(f"  ✅ Filled input field (context match): {field_name} = {value}")
+                                                break
+
+                                        if filled:
+                                            break
+                            except Exception as e:
+                                logger.debug(f"  Input selector '{selector}' failed: {e}")
                                 pass
 
                 # If not filled, try button clicking
@@ -735,10 +947,16 @@ class MDCalcClient:
                         logger.info(f"  Looking for {button_text} button near field '{field_name}'")
 
                         try:
-                            # Get all buttons/divs with this text
-                            # MDCalc uses divs as clickable options
+                            # For complex text with special characters, escape them for CSS selectors
+                            # But first try without escaping
                             button_locator = page.locator(f"button:text-is('{button_text}'), div:text-is('{button_text}')")
                             all_buttons = await button_locator.element_handles()
+
+                            # If no exact match found, try with partial text matching
+                            if len(all_buttons) == 0:
+                                # Try contains text for complex strings
+                                button_locator = page.locator(f"button:has-text('{button_text}'), div:has-text('{button_text}')")
+                                all_buttons = await button_locator.element_handles()
 
                             logger.debug(f"  Strategy 3: Found {len(all_buttons)} elements with text '{button_text}'")
 
@@ -787,21 +1005,216 @@ class MDCalcClient:
                         except Exception as e:
                             logger.debug(f"  Strategy 3 failed: {e}")
 
+                    # Strategy 4: Use JavaScript to find and click the button
+                    if not clicked:
+                        try:
+                            clicked = await page.evaluate('''({fieldName, buttonText}) => {
+                                console.log('Strategy 4: Looking for', buttonText, 'in field', fieldName);
+
+                                // Find all clickable elements (buttons and divs that act as buttons)
+                                const allClickables = Array.from(document.querySelectorAll('button, div[role="button"], div[class*="option"], div[class*="button"], div[onclick]'));
+
+                                for (const element of allClickables) {
+                                    const elementText = element.textContent?.trim();
+
+                                    // Check for exact match or contains the text
+                                    if (elementText === buttonText ||
+                                        (elementText && elementText.includes(buttonText))) {
+
+                                        // Check if this element is near the field label
+                                        let parent = element;
+                                        let foundNearField = false;
+
+                                        for (let i = 0; i < 5; i++) {
+                                            parent = parent.parentElement;
+                                            if (!parent) break;
+
+                                            if (parent.textContent && parent.textContent.includes(fieldName)) {
+                                                foundNearField = true;
+                                                break;
+                                            }
+                                        }
+
+                                        if (foundNearField) {
+                                            console.log('Found button near field, clicking:', elementText);
+
+                                            // Check if not already selected
+                                            const bgColor = window.getComputedStyle(element).backgroundColor;
+                                            const isSelected = bgColor === 'rgb(26, 188, 156)' ||
+                                                             bgColor === 'rgba(26, 188, 156, 1)';
+
+                                            if (isSelected) {
+                                                console.log('Button already selected');
+                                                return true;
+                                            }
+
+                                            element.click();
+                                            return true;
+                                        }
+                                    }
+                                }
+
+                                console.log('No matching button found');
+                                return false;
+                            }''', {'fieldName': field_name, 'buttonText': button_text})
+
+                            if clicked:
+                                logger.info(f"  ✅ Clicked option via JavaScript: {button_text}")
+                        except Exception as e:
+                            logger.debug(f"  Strategy 4 (JavaScript click) failed: {e}")
+
                     if not clicked:
                         logger.warning(f"  ⚠️ Could not click option for {field_name}: {button_text}")
 
-                # Wait for React to update (reduced for speed)
-                await page.wait_for_timeout(100)
+                # Wait for React to update and any conditional fields to appear
+                # Some calculators show/hide fields based on selections (like APACHE II)
+                if field_name.lower() in ['fio₂', 'fio2']:
+                    # Wait longer after FiO₂ as it triggers conditional fields
+                    await page.wait_for_timeout(1000)
+                else:
+                    await page.wait_for_timeout(100)
 
             # Wait for results to update (MDCalc takes time to calculate)
             await page.wait_for_timeout(2000)
 
             # Take a screenshot of the result (for debugging/validation)
             try:
+                # First, hide sticky Results overlay temporarily (same as in get_calculator_details)
+                await page.evaluate('''
+                    () => {
+                        // Hide Results section and any sticky/fixed overlays temporarily
+                        const elements = document.querySelectorAll('[class*="result"], [class*="Result"], [class*="score"], .calc__result');
+                        elements.forEach(el => {
+                            el.setAttribute('data-original-display', el.style.display);
+                            el.style.display = 'none';
+                        });
+
+                        // Hide sticky/fixed elements containing results
+                        document.querySelectorAll('*').forEach(el => {
+                            const style = window.getComputedStyle(el);
+                            if ((style.position === 'sticky' || style.position === 'fixed') &&
+                                (el.textContent || '').match(/Result|Score|point/)) {
+                                el.setAttribute('data-original-display', el.style.display);
+                                el.style.display = 'none';
+                            }
+                        });
+                    }
+                ''')
+
+                # Measure the full calculator height including all inputs and last field
+                measurements = await page.evaluate('''
+                    () => {
+                        const container = document.querySelector('.side-by-side-container, .calc__body');
+                        const calcHeight = container ? container.scrollHeight : 0;
+
+                        // Find the last input/button/field to ensure it's visible
+                        const allFields = container ? container.querySelectorAll('input, select, textarea, [class*="calc_option"], button, div[role="button"]') : [];
+                        let lastFieldBottom = 0;
+                        if (allFields.length > 0) {
+                            // Get the last few fields to find the actual bottom
+                            const lastFields = Array.from(allFields).slice(-5);
+                            lastFields.forEach(field => {
+                                const rect = field.getBoundingClientRect();
+                                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                                const bottom = rect.bottom + scrollTop;
+                                if (bottom > lastFieldBottom) {
+                                    lastFieldBottom = bottom;
+                                }
+                            });
+                        }
+
+                        return {
+                            calcHeight: calcHeight,
+                            lastFieldBottom: lastFieldBottom,
+                            viewportHeight: window.innerHeight
+                        };
+                    }
+                ''')
+
+                calc_height = measurements['calcHeight']
+                last_field_bottom = measurements['lastFieldBottom']
+                viewport_height = measurements['viewportHeight']
+
+                # Calculate optimal zoom to fit all fields
+                optimal_zoom = 100
+                target_height = last_field_bottom if last_field_bottom > 0 else calc_height
+
+                if target_height > viewport_height:
+                    # Use 90% of viewport to fit the calculator with a small margin
+                    optimal_zoom = int((viewport_height / target_height) * 90)
+                    optimal_zoom = max(50, min(optimal_zoom, 100))  # Clamp between 50-100%
+                    await page.evaluate(f'() => {{ document.body.style.zoom = "{optimal_zoom}%"; }}')
+                    logger.info(f"Zoomed to {optimal_zoom}% to fit calculator inputs (height: {target_height}px)")
+
+                # Scroll to top
+                await page.evaluate('window.scrollTo(0, 0)')
+                await page.wait_for_timeout(500)
+
+                # Take screenshot of the inputs
+                inputs_screenshot = await page.screenshot(
+                    type='jpeg',
+                    quality=85,
+                    full_page=False  # Viewport only
+                )
+
+                # Now restore results and capture them too
+                await page.evaluate('''
+                    () => {
+                        // Restore visibility
+                        document.querySelectorAll('[data-original-display]').forEach(el => {
+                            el.style.display = el.getAttribute('data-original-display') || '';
+                            el.removeAttribute('data-original-display');
+                        });
+                    }
+                ''')
+
+                # Wait for results to render
+                await page.wait_for_timeout(1000)
+
+                # Now measure with results visible to capture both inputs and results
+                measurements_with_results = await page.evaluate('''
+                    () => {
+                        // Find all content including inputs AND results
+                        const allElements = document.querySelectorAll('input, select, textarea, [class*="calc_option"], [class*="result"], [class*="Result"], [class*="score"], [class*="Score"]');
+
+                        let maxBottom = 0;
+                        allElements.forEach(el => {
+                            const rect = el.getBoundingClientRect();
+                            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                            const bottom = rect.bottom + scrollTop;
+                            if (bottom > maxBottom) maxBottom = bottom;
+                        });
+
+                        // Also check the calc body container
+                        const container = document.querySelector('.side-by-side-container, .calc__body, body');
+                        const containerHeight = container ? container.scrollHeight : 0;
+
+                        return {
+                            contentHeight: Math.max(maxBottom, containerHeight),
+                            viewportHeight: window.innerHeight
+                        };
+                    }
+                ''')
+
+                content_height = measurements_with_results['contentHeight']
+                viewport_height = measurements_with_results['viewportHeight']
+
+                # Calculate zoom to fit everything including results
+                if content_height > viewport_height:
+                    optimal_zoom = int((viewport_height / content_height) * 85)  # 85% to leave margin
+                    optimal_zoom = max(40, min(optimal_zoom, 100))  # Allow more zoom out (40-100%)
+                    await page.evaluate(f'() => {{ document.body.style.zoom = "{optimal_zoom}%"; }}')
+                    logger.info(f"Zoomed result view to {optimal_zoom}% to fit all content (height: {content_height}px)")
+                    await page.wait_for_timeout(500)  # Wait for zoom to apply
+
+                # Scroll to top to capture from beginning
+                await page.evaluate('window.scrollTo(0, 0)')
+                await page.wait_for_timeout(300)
+
                 result_screenshot = await page.screenshot(
                     type='jpeg',
                     quality=85,
-                    full_page=False  # Just viewport to capture results
+                    full_page=False  # Viewport capture with zoom applied
                 )
                 # Save to screenshots directory if it exists (for tests)
                 screenshots_dir = Path(__file__).parent.parent / "tests" / "screenshots"
@@ -822,23 +1235,23 @@ class MDCalcClient:
 
                     // Strategy 1: Look for result containers (calc_result class pattern)
                     // MDCalc consistently uses classes with "calc_result" in them
-                    const resultContainers = document.querySelectorAll('[class*="calc_result"], [class*="result_container"], [class*="score_display"]');
+                    const resultContainers = document.querySelectorAll('[class*="calc_result"], [class*="result_container"], [class*="score_display"], [class*="calc-results"]');
 
                     for (const container of resultContainers) {
                         // Look for heading elements (h1, h2, h3) within the result container
                         // These typically contain the score
-                        const headings = container.querySelectorAll('h1, h2, h3');
+                        const headings = container.querySelectorAll('h1, h2, h3, h4, div[class*="score"]');
                         for (const heading of headings) {
                             const text = heading.textContent.trim();
-                            // Match patterns like "8 points", "8", etc.
-                            const scoreMatch = text.match(/^(\\d+)\\s*(points?|pts?)?/i);
+                            // Match patterns like "8 points", "8", "SOFA Score: 8", etc.
+                            const scoreMatch = text.match(/(\\d+)\\s*(points?|pts?)?/i);
                             if (scoreMatch && !score) {
                                 score = scoreMatch[1] + ' points';
 
                                 // Also look for risk/interpretation in the same container
                                 const containerText = container.textContent;
                                 // Extract risk percentage if present
-                                const riskMatch = containerText.match(/(\\d+\\.?\\d*)%.*?(risk|per year)/i);
+                                const riskMatch = containerText.match(/(\\d+\\.?\\d*)%.*?(risk|mortality|per year)/i);
                                 if (riskMatch && !risk) {
                                     risk = riskMatch[0];
                                 }
@@ -884,6 +1297,32 @@ class MDCalcClient:
                                 if (match) {
                                     interpretation = match[0];
                                     break;
+                                }
+                            }
+                        }
+                    }
+
+                    // Strategy 3: Look for any visible score or result pattern
+                    if (!score) {
+                        // Get all visible text
+                        const visibleText = document.body.innerText || document.body.textContent;
+
+                        // Look for common patterns (generic, not calculator-specific)
+                        // Pattern 1: "X points" or "X pts" anywhere in visible text
+                        const pointsPattern = visibleText.match(/(\\d+)\\s+(?:points?|pts?)(?!\\s*[\\+\\-])/i);
+                        if (pointsPattern) {
+                            score = pointsPattern[1] + ' points';
+                        } else {
+                            // Pattern 2: Look for "Score: X" or similar
+                            const scorePattern = visibleText.match(/Score[:\\s]+(\\d+)/i);
+                            if (scorePattern) {
+                                score = scorePattern[1] + ' points';
+                            } else {
+                                // Pattern 3: For calculators like LDL that show a value with units
+                                // Look for patterns like "125 mg/dL" or "LDL: 125"
+                                const valuePattern = visibleText.match(/(\\d+\\.?\\d*)\\s*(?:mg\\/dL|mmol\\/L)/i);
+                                if (valuePattern) {
+                                    score = valuePattern[1] + ' mg/dL';
                                 }
                             }
                         }
