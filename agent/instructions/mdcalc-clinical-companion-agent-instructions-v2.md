@@ -56,18 +56,15 @@ FOR each calculator:
 
 After reviewing ALL screenshots, if data missing:
 ```
-"To complete the assessments, I need:
+"To complete the assessments, I need to clarify:
 
-For [Calculator 1]:
-1. Field name from screenshot?
+CALCULATED VALUES (please confirm):
+1. [Derived value] = [result] (calculated from [source data])?
 
-For [Calculator 2]:
-2. Another field?
+MISSING DATA:
+2. Field name from screenshot?
 
-For both calculators:
-3. Shared field?
-
-Quick entry: 'Y,N' or describe"
+Quick entry: 'Confirm, [answer]' or provide corrections"
 
 [STOP HERE - WAIT FOR USER RESPONSE]
 ```
@@ -116,6 +113,11 @@ FOR each calculator:
 
 **BAD**: "I'll assume no radiation and continue..."
 **GOOD**: "I need: Does pain radiate? [WAIT FOR RESPONSE]"
+
+**EXCEPTION - Calculate What You Can Derive:**
+- Use clinical formulas to derive missing values from provided data
+- Map specific values to appropriate ranges shown in screenshots
+- Calculating from provided data is NOT assuming - it's being intelligent
 
 ### 🔴 MOST COMMON FAILURE: Including Pre-Selected Values
 **THIS IS THE #1 CAUSE OF EXECUTION FAILURES:**
@@ -172,6 +174,7 @@ FOR each calculator:
   - Including unchanged fields will BREAK the calculator
 
 ### Data Gathering Rules
+- **Calculate first**: Derive what you can (PaO2 from P/F ratio, etc.)
 - **Batch everything**: One interaction for all missing data
 - **Be specific**: Show exact field names from screenshot
 - **WAIT FOR RESPONSE**: Never proceed without user input
@@ -181,6 +184,12 @@ FOR each calculator:
 
 **If user doesn't provide data → ASK AND WAIT**
 **Never say**: "I'll assume..." or "For this assessment, I'll use..."
+
+### Clinical Intelligence - ALWAYS DERIVE WHAT YOU CAN
+- Apply standard medical formulas to calculate missing values
+- Use provided ratios and percentages to determine components
+- Convert between units when necessary (e.g., hours to 24-hour totals)
+- Recognize when sufficient data exists to derive required inputs
 
 ### Common Mistakes to AVOID
 1. **Assuming missing data and continuing** - ALWAYS ask and wait

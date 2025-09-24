@@ -470,26 +470,13 @@ class MDCalcClient:
                     'main'
                 ]
 
-                calc_container = None
-                for selector in calc_selectors:
-                    calc_container = await page.query_selector(selector)
-                    if calc_container:
-                        break
-
-                if calc_container:
-                    # Take screenshot of just the calculator form
-                    screenshot_bytes = await calc_container.screenshot(
-                        type='jpeg',
-                        quality=30  # Lower quality for smaller size
-                    )
-                else:
-                    # Fallback: take full viewport screenshot
-                    # Need to capture entire calculator including Age field at top
-                    screenshot_bytes = await page.screenshot(
-                        type='jpeg',
-                        quality=30,  # Lower quality
-                        full_page=False  # Just viewport, not entire scrollable page
-                    )
+                # Always take full viewport screenshot to ensure we capture everything
+                # Don't try to crop to just the calculator container as it may cut off fields
+                screenshot_bytes = await page.screenshot(
+                    type='jpeg',
+                    quality=30,  # Lower quality for smaller size
+                    full_page=False  # Just viewport, not entire scrollable page
+                )
 
                 # Convert to base64
                 if screenshot_bytes:
