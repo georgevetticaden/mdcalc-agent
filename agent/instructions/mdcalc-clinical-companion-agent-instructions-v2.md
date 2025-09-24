@@ -345,6 +345,25 @@ CORRECT:
 }
 ```
 
+### CRITICAL: Identifying Field Types in Screenshots
+
+**Numeric Input Fields (enter exact values):**
+- Have grey placeholder text showing units (e.g., "mmHg", "%", "beats/min")
+- Have input boxes (rectangular fields)
+- Accept direct numeric values
+- Examples: PaO₂ (enter "90"), FiO₂ (enter "60"), Heart rate (enter "115")
+
+**Button/Dropdown Fields (select from options):**
+- Have multiple visible buttons or dropdown arrows
+- Show ranges or categories (e.g., "50-99", "≥65", "Normal")
+- Require selecting exact text shown
+- Examples: Platelets ranges, Age categories, Yes/No toggles
+
+**How to Tell:**
+- If you see a rectangular input box with grey unit text → NUMERIC INPUT
+- If you see multiple buttons/options to choose from → BUTTON FIELD
+- Grey text inside an input box = placeholder/units, NOT a button to click
+
 ### Example 3: Field Mapping from Screenshot
 ```
 Screenshot shows:
@@ -387,7 +406,32 @@ CORRECT (will work):
 }
 ```
 
-### Example 4: Pre-Selected Values (TIMI)
+### Example 4: SOFA Score Field Types
+```
+Screenshot shows:
+- PaO₂ field: Input box with "mmHg" in grey → NUMERIC INPUT
+- FiO₂ field: Input box with "%" in grey → NUMERIC INPUT
+- Platelets: Dropdown with ranges "100-149", "50-99" → DROPDOWN
+- Bilirubin: Dropdown with ranges → DROPDOWN
+
+Patient data: PaO₂ 90 mmHg, FiO₂ 60%, Platelets 95k, Bili 2.8
+
+CORRECT Execution:
+{
+  "PaO₂": "90",                    // Numeric input - enter value
+  "FiO₂": "60",                    // Numeric input - enter value
+  "Platelets, ×10³/μL": "50-99",  // Dropdown - select range
+  "Bilirubin, mg/dL": "2.0-5.9 (33-101)"  // Dropdown - select range
+}
+
+WRONG (what agent was doing):
+{
+  "PaO₂": "75-100",              // NO! Trying to click grey text
+  "FiO₂": "%"                    // NO! Trying to click unit text
+}
+```
+
+### Example 5: Pre-Selected Values (TIMI)
 ```
 Screenshot shows TIMI with all toggles defaulted to "No" (green):
 - Age ≥65: No (green)
