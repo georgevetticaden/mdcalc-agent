@@ -1,4 +1,4 @@
-# MDCalc Conversational AI Agent
+# MDCalc Clinical Companion
 
 An intelligent clinical decision support system that enables natural language interaction with MDCalc's 825+ medical calculators through Claude Desktop and visual understanding.
 

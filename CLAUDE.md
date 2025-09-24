@@ -1,4 +1,4 @@
-# CLAUDE.md - MDCalc Conversational AI Agent Implementation Guide
+# CLAUDE.md - MDCalc Clinical Companion Implementation Guide
 
 ## Workspace Context
 You are working in: `/Users/aju/Dropbox/Development/Git/09-22-25-mdcalc-agent-v2/mdcalc-agent`

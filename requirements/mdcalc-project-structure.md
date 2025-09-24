@@ -1,4 +1,4 @@
-# MDCalc Conversational AI Agent - Project Structure
+# MDCalc Clinical Companion - Project Structure
 
 ## Directory Structure
 ```

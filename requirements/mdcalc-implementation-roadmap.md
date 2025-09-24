@@ -1,7 +1,7 @@
-# MDCalc Conversational AI Agent - Implementation Roadmap
+# MDCalc Clinical Companion - Implementation Roadmap
 
 ## Executive Summary
-A phased implementation plan to build and demonstrate the MDCalc Conversational AI Agent, leveraging existing infrastructure and proven patterns from previous successful projects. No fixed timeline - progress through phases based on completion and validation.
+A phased implementation plan to build and demonstrate the MDCalc Clinical Companion, leveraging existing infrastructure and proven patterns from previous successful projects. No fixed timeline - progress through phases based on completion and validation.
 
 ## Phase 0: Recording & Discovery
 **Goal**: Use Playwright recordings to understand MDCalc's structure

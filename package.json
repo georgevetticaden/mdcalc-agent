@@ -1,7 +1,7 @@
 {
   "name": "mdcalc-agent",
   "version": "1.0.0",
-  "description": "MDCalc Conversational AI Agent with MCP servers",
+  "description": "MDCalc Clinical Companion - Intelligent decision support with MCP servers",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
