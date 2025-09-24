@@ -171,9 +171,10 @@ class MDCalcMCPServer:
             {
                 'name': 'mdcalc_list_all',
                 'description': (
-                    'Get the complete catalog of all 825 MDCalc medical calculators organized by specialty. '
-                    'Returns comprehensive list with calculator IDs, names, categories, and conditions. '
-                    'Use this to discover available calculators or when you need to browse by specialty.'
+                    'Get the complete catalog of all 825 MDCalc calculators in an optimized format (~31K tokens). '
+                    'Returns compact list with just ID, name, and medical category for each calculator. '
+                    'Use for comprehensive assessments where you need to review all available options by specialty. '
+                    'URLs can be constructed as: https://www.mdcalc.com/calc/{id}'
                 ),
                 'inputSchema': {
                     'type': 'object',
@@ -184,10 +185,10 @@ class MDCalcMCPServer:
             {
                 'name': 'mdcalc_search',
                 'description': (
-                    'Search the MDCalc calculator catalog by condition, symptom, or calculator name. '
-                    'Searches across 825 calculators in name, category, and slug fields. '
-                    'Returns matching calculators with ID, title, category, and URL. '
-                    'Example queries: "chest pain", "heart", "pneumonia", "TIMI", "stroke".'
+                    'Search MDCalc using their sophisticated web search that understands clinical relationships. '
+                    'Returns semantically relevant calculators, not just keyword matches. '
+                    'Use for targeted queries when you know what you are looking for. '
+                    'Example queries: "chest pain" (finds HEART, TIMI), "afib" (finds CHA2DS2-VASc), "sepsis" (finds SOFA).'
                 ),
                 'inputSchema': {
                     'type': 'object',
@@ -272,10 +273,10 @@ class MDCalcMCPServer:
 
         Returns:
             Dict containing 'content' with tool results:
-            - mdcalc_list_all: Returns catalog of 825 calculators grouped by category
-            - mdcalc_search: Returns matching calculators with IDs and metadata
-            - mdcalc_get_calculator: Returns screenshot (image) + calculator metadata
-            - mdcalc_execute: Returns score, risk category, and clinical interpretation
+            - mdcalc_list_all: Optimized catalog (~31K tokens) with ID, name, category
+            - mdcalc_search: Web search results with semantic matching
+            - mdcalc_get_calculator: Screenshot (JPEG) for visual understanding
+            - mdcalc_execute: Calculation results with score and interpretation
         """
         try:
             if tool_name == 'mdcalc_list_all':

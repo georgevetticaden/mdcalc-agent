@@ -40,22 +40,19 @@ class MDCalcClient:
     MDCalc automation client using Playwright for browser control.
 
     This client implements a screenshot-based approach for universal calculator support.
-    Instead of maintaining 825 different selector configurations, we:
-    1. Navigate to calculators
-    2. Take screenshots for Claude's visual understanding
-    3. Execute calculators based on Claude's intelligent mapping
+    Uses visual understanding instead of maintaining 825 different selector configurations.
 
     Key Design Principles:
-    - NO hardcoded selectors for specific calculators
-    - Screenshots enable Claude to SEE and understand any calculator
-    - Client is purely mechanical - Claude handles all intelligence
-    - Supports all 825 MDCalc calculators automatically
+    - Smart Agent, Dumb Tools: Client is mechanical, Claude provides intelligence
+    - Visual Understanding: Screenshots enable field mapping without hardcoding
+    - Exact Matching: Field names must match exactly as shown in UI (no normalization)
+    - Optimized Catalog: Compact format reduces tokens from 82K to 31K
 
     Methods:
-        get_all_calculators(): Load catalog of 825 calculators
-        search_calculators(): Search by condition/name
+        get_all_calculators(): Load optimized catalog (ID, name, category only)
+        search_calculators(): Use MDCalc's semantic web search
         get_calculator_details(): Get screenshot for visual understanding
-        execute_calculator(): Execute with mapped values
+        execute_calculator(): Execute with exact field names from screenshot
     """
 
     def __init__(self):
@@ -76,7 +73,15 @@ class MDCalcClient:
         return None
 
     async def initialize(self, headless=True, use_auth=True):
-        """Initialize Playwright browser."""
+        """
+        Initialize Playwright browser instance.
+
+        Args:
+            headless (bool): Run browser in headless mode (default: True).
+                            Set to False to see browser during demos.
+                            Controlled by MDCALC_HEADLESS env var in MCP config.
+            use_auth (bool): Load authentication state if available.
+        """
         self.playwright = await async_playwright().start()
 
         self.browser = await self.playwright.chromium.launch(
@@ -99,19 +104,20 @@ class MDCalcClient:
 
     async def get_all_calculators(self) -> List[Dict]:
         """
-        Load the complete MDCalc calculator catalog from JSON file.
+        Load the complete MDCalc calculator catalog optimized for LLM processing.
+
+        Returns a compact format to minimize token usage while preserving
+        all essential information for calculator selection.
 
         Returns:
             List[Dict]: List of 825 calculators, each containing:
                 - id (str): Calculator ID (e.g., "1752")
                 - name (str): Calculator name (e.g., "HEART Score")
-                - category (str): Medical specialty (e.g., "Cardiology")
-                - slug (str): URL slug (e.g., "heart-score")
-                - url (str): Full MDCalc URL
+                - category (str): Medical category (e.g., "Cardiology")
 
-        Raises:
-            FileNotFoundError: If catalog file doesn't exist
-            RuntimeError: If catalog file can't be parsed
+        Note:
+            URLs are omitted but can be constructed as:
+            https://www.mdcalc.com/calc/{id}
         """
         # Load from scraped catalog file
         catalog_path = Path(__file__).parent / "calculator-catalog" / "mdcalc_catalog.json"
@@ -126,16 +132,31 @@ class MDCalcClient:
             with open(catalog_path, 'r') as f:
                 catalog = json.load(f)
                 logger.info(f"Loaded {catalog['total_count']} calculators from catalog")
-                return catalog['calculators']
+
+                # Return optimized format - just id, name, and category
+                optimized = []
+                for calc in catalog['calculators']:
+                    # Truncate very long names to save tokens
+                    name = calc.get('name', '')
+                    if len(name) > 100:
+                        name = name[:97] + '...'
+
+                    optimized.append({
+                        'id': calc.get('id'),
+                        'name': name,
+                        'category': calc.get('category', 'General')
+                    })
+
+                return optimized
         except Exception as e:
             raise RuntimeError(f"Failed to load calculator catalog: {e}")
 
     async def search_calculators(self, query: str, limit: int = 10) -> List[Dict]:
         """
-        Search for calculators by condition, symptom, or name.
+        Search for calculators using MDCalc's web search.
 
-        Searches first in the local catalog (825 calculators) for speed,
-        then falls back to web search if needed.
+        Uses MDCalc's sophisticated search algorithm that understands
+        clinical relationships and semantic matches.
 
         Args:
             query (str): Search term (e.g., "chest pain", "HEART", "pneumonia")
@@ -145,46 +166,11 @@ class MDCalcClient:
             List[Dict]: Matching calculators, each containing:
                 - id (str): Calculator ID
                 - title (str): Calculator name
-                - category (str): Medical specialty
                 - slug (str): URL slug
                 - url (str): Full MDCalc URL
                 - description (str): Brief description (if available)
         """
-        # First try searching in our catalog (faster and more reliable)
-        try:
-            all_calculators = await self.get_all_calculators()
-            query_lower = query.lower()
-
-            # Search in name, category, and slug
-            matching_calcs = []
-            for calc in all_calculators:
-                name = calc.get('name', '').lower()
-                category = calc.get('category', '').lower()
-                slug = calc.get('slug', '').lower()
-
-                # Check if query matches any field
-                if (query_lower in name or
-                    query_lower in category or
-                    query_lower in slug):
-                    matching_calcs.append({
-                        'id': calc.get('id'),
-                        'title': calc.get('name'),
-                        'category': calc.get('category'),
-                        'slug': calc.get('slug'),
-                        'url': calc.get('url', f"{self.base_url}/calc/{calc.get('id')}/{calc.get('slug')}")
-                    })
-
-                    if len(matching_calcs) >= limit:
-                        break
-
-            if matching_calcs:
-                logger.info(f"Found {len(matching_calcs)} calculators for '{query}' from catalog")
-                return matching_calcs[:limit]
-
-        except Exception as e:
-            logger.warning(f"Catalog search failed: {e}, falling back to web search")
-
-        # Fallback to web search if catalog search fails or returns no results
+        # Use MDCalc's web search directly for better semantic matching
         page = await self.context.new_page()
 
         try:

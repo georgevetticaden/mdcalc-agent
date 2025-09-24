@@ -41,19 +41,22 @@ When asked for a full assessment (e.g., "chest pain evaluation"):
 
 **Example for Chest Pain:**
 ```
-# First: Search for relevant calculators
-- mdcalc_search("chest pain")
-- mdcalc_search("cardiac risk")
+# First: Get relevant calculators (choose one approach)
+Option 1: mdcalc_list_all() → Filter for cardiology/emergency calculators
+Option 2: mdcalc_search("chest pain") → Get top results
 
-# Second: Get screenshots for selected calculators (using IDs from search)
-- mdcalc_get_calculator(heart_score_id)
-- mdcalc_get_calculator(timi_id)
-- mdcalc_get_calculator(grace_id)
+# Second: Select calculator IDs from results
+Selected: ["1752", "111", "1099"] (HEART, TIMI, GRACE)
 
-# Third: Execute all in parallel with exact field names from screenshots
-- mdcalc_execute(heart_score_id, {...})
-- mdcalc_execute(timi_id, {...})
-- mdcalc_execute(grace_id, {...})
+# Third: Get screenshots in parallel
+- mdcalc_get_calculator("1752")
+- mdcalc_get_calculator("111")
+- mdcalc_get_calculator("1099")
+
+# Fourth: Execute all in parallel with exact field names from screenshots
+- mdcalc_execute("1752", {"History": "Moderately suspicious", ...})
+- mdcalc_execute("111", {"Age ≥65": "No", ...})
+- mdcalc_execute("1099", {...})
 ```
 
 **Pattern B: Sequential Decision Tree**
@@ -73,22 +76,46 @@ For treatment decisions (e.g., anticoagulation):
 ## Available Tools
 
 ### MDCalc Automation Tools (via mdcalc-automation-mcp)
-- `mdcalc_list_all`: Get catalog of all 825 calculators (use sparingly - large response)
-- `mdcalc_search`: Find relevant calculators by condition or specialty (preferred for targeted queries)
+- `mdcalc_list_all`: Get catalog of all 825 calculators (~31K tokens, optimized format)
+- `mdcalc_search`: Find calculators using MDCalc's semantic search
 - `mdcalc_get_calculator`: Get screenshot and details to SEE the calculator interface
 - `mdcalc_execute`: Run a single calculator with provided inputs
 - Note: You handle parallel execution by making multiple tool calls
 
 ### Calculator Selection Strategy
-1. **Use mdcalc_search** to find relevant calculators based on the clinical presentation
-2. **Extract calculator IDs** from search results (found in the "id" field)
-3. **Select 2-4 most relevant calculators** based on clinical judgment
-4. **Get screenshots and execute** using the discovered IDs
 
-Example workflow:
-- Search: "chest pain" → Returns HEART Score, TIMI, GRACE, etc. with their IDs
-- Select the most relevant based on the specific scenario
-- Use those IDs for get_calculator and execute operations
+#### When to use `mdcalc_list_all`:
+- **Comprehensive assessments** requiring multiple related calculators
+- **Complex presentations** where you need to consider many options
+- **First time seeing a condition** to understand all available tools
+- Returns compact format: just ID, name, and category (URLs can be constructed)
+
+#### When to use `mdcalc_search`:
+- **Specific calculator lookups** (e.g., user asks for "HEART Score")
+- **Quick targeted queries** when you know what you're looking for
+- **Exploratory searches** to see what's available for a symptom
+- Uses MDCalc's semantic search that understands clinical relationships
+
+#### Recommended Workflow:
+1. **For comprehensive assessments**: Call `mdcalc_list_all` once, then select relevant calculators
+2. **For specific requests**: Use `mdcalc_search` with targeted query
+3. **Always**: Get screenshots before executing (multiple in parallel)
+4. **Always**: Execute multiple calculators in parallel when applicable
+
+Example for chest pain assessment:
+```
+Option A (Comprehensive):
+1. mdcalc_list_all() → Review all cardiology/emergency calculators
+2. Select: HEART (1752), TIMI (111), GRACE, EDACS based on full catalog
+3. Get screenshots in parallel
+4. Execute all in parallel
+
+Option B (Targeted):
+1. mdcalc_search("chest pain cardiac") → Get top 10 results
+2. Select most relevant from search results
+3. Get screenshots in parallel
+4. Execute all in parallel
+```
 
 ## CRITICAL: MDCalc Execution Rules
 

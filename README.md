@@ -1,6 +1,6 @@
 # MDCalc Conversational AI Agent
 
-A Claude-powered medical calculator automation system that enables natural language interaction with MDCalc's 825+ medical calculators through visual understanding and intelligent data mapping.
+An intelligent clinical decision support system that enables natural language interaction with MDCalc's 825+ medical calculators through Claude Desktop and visual understanding.
 
 ## Overview
 
@@ -16,7 +16,8 @@ This system transforms MDCalc from a **pull-based** system (physicians manually 
 - 👁️ **Visual Calculator Understanding**: Screenshots enable universal calculator support
 - 🔄 **Parallel Execution**: Run multiple calculators simultaneously
 - 🧠 **Intelligent Orchestration**: Claude handles all clinical interpretation
-- 📊 **Health Data Integration**: Pulls from Snowflake/EHR systems automatically
+- 📊 **Optimized Catalog**: ~31K tokens (63% smaller) for all 825 calculators
+- 🔍 **Semantic Search**: MDCalc's sophisticated search, not keyword matching
 - ⚡ **Complete Coverage**: All 825 MDCalc calculators supported
 
 ## Architecture
@@ -94,33 +95,46 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "mdcalc-automation": {
-      "command": "python",
+      "command": "/path/to/mdcalc-agent/venv/bin/python",
       "args": [
         "/path/to/mdcalc-agent/mcp-servers/mdcalc-automation-mcp/src/mdcalc_mcp.py"
-      ]
+      ],
+      "env": {
+        "PYTHONPATH": "/path/to/mdcalc-agent",
+        "MDCALC_HEADLESS": "true"
+      }
     }
   }
 }
 ```
 
+**Environment Variables**:
+- `MDCALC_HEADLESS`: Set to `"false"` to see browser during demos
+- `PYTHONPATH`: Path to mdcalc-agent root
+
 ### 3. Test the System
 
 ```bash
-# Test MCP server and tools
-python mcp-servers/mdcalc-automation-mcp/tests/test_mcp_server.py
+cd mcp-servers/mdcalc-automation-mcp/tests
 
-# Test calculator execution
-python mcp-servers/mdcalc-automation-mcp/tests/test_known_calculators.py
+# Test catalog optimization (no browser)
+python test_catalog_improvements.py
+
+# Test calculator execution (browser required)
+python test_calculator_execution.py
+
+# Test MCP protocol
+python test_mcp_server.py
 ```
 
 ## MCP Tools Available
 
 The MDCalc MCP server provides 4 tools to Claude:
 
-1. **mdcalc_list_all**: Get all 825 calculators organized by specialty
-2. **mdcalc_search**: Search calculators by condition or name
-3. **mdcalc_get_calculator**: Get calculator with screenshot for visual understanding
-4. **mdcalc_execute**: Execute calculator with mapped values
+1. **mdcalc_list_all**: Get optimized catalog (~31K tokens) with ID, name, category
+2. **mdcalc_search**: Use MDCalc's semantic web search for relevant calculators
+3. **mdcalc_get_calculator**: Get screenshot for visual understanding (required before execute)
+4. **mdcalc_execute**: Execute with exact field names from screenshot (no normalization)
 
 See [mcp-servers/mdcalc-automation-mcp/README.md](mcp-servers/mdcalc-automation-mcp/README.md) for detailed API documentation.
 
@@ -142,19 +156,39 @@ Claude's Process:
 6. Returns: "HEART Score is 5 (12% risk). Consider admission and cardiology consultation."
 ```
 
+## Key Improvements (Latest)
+
+### 1. Search Enhancement
+- Removed rudimentary local catalog search
+- Now uses MDCalc's sophisticated web search
+- Better semantic matching ("chest pain" finds HEART, TIMI automatically)
+
+### 2. Catalog Optimization
+- Reduced from ~82K to ~31K tokens (63% reduction)
+- Removed redundant fields (URL, slug, description)
+- Kept essential: ID, name, category
+
+### 3. Exact Field Matching
+- No field name normalization
+- Must match UI exactly ("History" not "history")
+- Spaces not underscores ("Risk factors" not "risk_factors")
+- Only pass fields that need changing from defaults
+
+### 4. Headless Mode Control
+- Set `MDCALC_HEADLESS="false"` for demos
+- Default `"true"` for production
+
 ## Implementation Status
 
 ✅ **Complete**:
 - 825 calculators catalogued across 16 specialties
 - Screenshot-based universal calculator support
+- Optimized catalog format (63% smaller)
+- Semantic search integration
 - MCP server with 4 production-ready tools
-- Intelligent category assignment
+- Exact field matching system
 - Comprehensive test suite
-
-🚧 **In Progress**:
-- Claude Desktop integration
-- Multi-calculator synthesis examples
-- Clinical pathway templates
+- Claude Desktop configuration
 
 ## Development
 

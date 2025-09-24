@@ -5,10 +5,11 @@ Model Context Protocol (MCP) server that provides Claude with access to all 825 
 ## Overview
 
 This MCP server enables Claude to:
-- Search and discover medical calculators from a catalog of 825 tools
-- Understand calculator requirements through screenshots (visual AI)
-- Execute calculators with intelligently mapped patient data
-- Extract and interpret results
+- Browse all 825 MDCalc calculators with an optimized catalog (~31K tokens)
+- Search using MDCalc's sophisticated semantic search (not keyword matching)
+- Visually understand calculator interfaces through screenshots
+- Execute any calculator with exact field mapping (no normalization)
+- Provide evidence-based clinical decision support
 
 ## Architecture
 
@@ -71,7 +72,7 @@ ls src/calculator-catalog/mdcalc_catalog.json
 
 ### 1. `mdcalc_list_all`
 
-Get complete catalog of all 825 calculators organized by specialty.
+Get complete catalog of all 825 calculators in optimized format (~31K tokens, 63% smaller than original).
 
 **Parameters**: None
 
@@ -82,35 +83,39 @@ Get complete catalog of all 825 calculators organized by specialty.
   "categories": ["Cardiology", "Pulmonology", ...],
   "calculators_by_category": {
     "Cardiology": [
-      {"id": "1752", "name": "HEART Score", "condition": "chest pain"},
+      {"id": "1752", "name": "HEART Score for Major Cardiac Events", "category": "Cardiology"},
       ...
     ]
   }
 }
 ```
 
+**Note**: URLs omitted but can be constructed as `https://www.mdcalc.com/calc/{id}`
+
 ### 2. `mdcalc_search`
 
-Search for calculators by condition, symptom, or name.
+Search MDCalc using their sophisticated web search that understands clinical relationships.
 
 **Parameters**:
-- `query` (string): Search term
+- `query` (string): Search term (e.g., "chest pain", "afib", "sepsis")
 - `limit` (integer, optional): Max results (default: 10)
 
 **Returns**:
 ```json
 {
-  "count": 5,
+  "count": 10,
   "calculators": [
     {
       "id": "1752",
-      "title": "HEART Score",
+      "title": "HEART Score for Major Cardiac Events",
       "url": "https://www.mdcalc.com/calc/1752/...",
-      "description": "Predicts 6-week risk..."
+      "slug": "heart-score-major-cardiac-events"
     }
   ]
 }
 ```
+
+**Note**: Uses MDCalc's semantic search - "chest pain" finds HEART, TIMI, GRACE even without exact keyword matches
 
 ### 3. `mdcalc_get_calculator`
 
@@ -208,20 +213,24 @@ The test suite verifies all aspects of the MDCalc automation system. Tests shoul
 ### Recommended Test Order
 
 ```bash
-# 1. Basic screenshot test (quick smoke test)
+# 1. Test catalog optimization (no browser required)
+python tests/test_catalog_improvements.py
+# Validates 63% token reduction and clinical search capability
+
+# 2. Basic screenshot test (quick smoke test)
 python tests/test_screenshot.py
 
-# 2. Main integration test (comprehensive)
+# 3. Main integration test (comprehensive)
 python tests/test_calculator_execution.py
 # Enter 'n' when prompted to watch the browser
 
-# 3. MCP server protocol test
+# 4. MCP server protocol test
 python tests/test_mcp_server.py
 
-# 4. (Optional) Test specific calculators
+# 5. (Optional) Test specific calculators
 python tests/test_known_calculators.py
 
-# 5. (Optional) Test any specific calculator
+# 6. (Optional) Test any specific calculator
 python tests/test_any_calculator.py
 # Follow prompts to enter calculator ID
 ```
@@ -314,17 +323,22 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "mdcalc-automation": {
-      "command": "python",
+      "command": "/path/to/venv/bin/python",
       "args": [
         "/full/path/to/mcp-servers/mdcalc-automation-mcp/src/mdcalc_mcp.py"
       ],
       "env": {
-        "PYTHONPATH": "/full/path/to/mdcalc-agent"
+        "PYTHONPATH": "/full/path/to/mdcalc-agent",
+        "MDCALC_HEADLESS": "true"
       }
     }
   }
 }
 ```
+
+**Environment Variables**:
+- `MDCALC_HEADLESS`: Set to `"false"` to see browser during demos (default: `"true"` for headless operation)
+- `PYTHONPATH`: Path to the mdcalc-agent root directory
 
 ## How Claude Uses This Server
 
@@ -375,20 +389,47 @@ Claude's Process:
 
 This server is intentionally "dumb" - it only:
 - Takes screenshots
-- Clicks buttons
+- Clicks buttons with exact text matching
 - Extracts text
+- Returns optimized catalog
 
 All intelligence lives in Claude:
-- Visual understanding
+- Visual understanding of screenshots
 - Clinical interpretation
-- Data mapping
+- Exact field name mapping (no normalization)
 - Result synthesis
+- Calculator selection from catalog
 
 This separation ensures:
-- Universal calculator support
+- Universal calculator support (all 825)
 - No maintenance of calculator-specific code
 - Robust against UI changes
 - Leverages Claude's vision capabilities
+- Efficient token usage (~31K for full catalog)
+
+## Key Improvements (Latest)
+
+### 1. Search Enhancement
+- Removed rudimentary local catalog search (simple string matching)
+- Now uses only MDCalc's sophisticated web search
+- Better semantic matching (e.g., "chest pain risk" properly finds HEART Score, TIMI)
+
+### 2. Catalog Optimization
+- Reduced from ~82K to ~31K tokens (63% reduction)
+- Removed redundant fields (URL, slug, description)
+- Kept essential fields only: ID, name, category
+- URLs can be constructed: `https://www.mdcalc.com/calc/{id}`
+
+### 3. Exact Field Matching
+- No field name normalization
+- Must use exact capitalization from UI ("History" not "history")
+- Must use spaces not underscores ("Risk factors" not "risk_factors")
+- Only pass fields that need changing from defaults
+
+### 4. Headless Mode Control
+- Set `MDCALC_HEADLESS="false"` in config for demos
+- Default `"true"` for production use
+- Allows watching browser during presentations
 
 ## License
 
