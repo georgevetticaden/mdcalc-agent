@@ -1,25 +1,20 @@
 #!/usr/bin/env python3
 """
-MDCalc Automation Client - Browser automation with screenshot support
+MDCalc Automation Client - Universal calculator support through visual understanding.
 
-This client provides low-level browser automation for MDCalc calculators using Playwright.
-The key innovation is using screenshots for Claude's visual understanding rather than
-maintaining complex selectors for 825 different calculators.
+Provides browser automation for all 825 MDCalc medical calculators using a screenshot-based
+approach that enables Claude to visually understand and interact with any calculator interface.
 
-Core Capabilities:
-    - Navigate to any MDCalc calculator by ID or slug
-    - Capture optimized screenshots (23KB JPEG) of calculator interfaces
-    - Search within catalog of 825 calculators
-    - Execute calculators by clicking buttons and filling inputs
-    - Extract results after calculation
+Key Innovation:
+    Instead of maintaining 825 different selector configurations, this client captures
+    screenshots that Claude analyzes visually to understand available fields and options.
 
-Design Philosophy:
-    - Screenshots over selectors: Claude SEES the calculator
-    - Universal support: One approach works for all calculators
-    - Mechanical execution: No clinical logic, just browser automation
-    - Catalog-driven: Complete offline catalog for fast searching
-
-This client is intentionally "dumb" - all intelligence lives in Claude.
+Core Features:
+    - Universal calculator support without hardcoded selectors
+    - Intelligent zoom adjustment for long calculator forms
+    - Automatic removal of sticky overlays that obscure fields
+    - Optimized screenshot compression (~23KB per image)
+    - Semantic search across all MDCalc calculators
 """
 
 import asyncio
@@ -39,20 +34,20 @@ class MDCalcClient:
     """
     MDCalc automation client using Playwright for browser control.
 
-    This client implements a screenshot-based approach for universal calculator support.
-    Uses visual understanding instead of maintaining 825 different selector configurations.
+    Implements screenshot-based universal calculator support for all 825 MDCalc calculators.
+    Instead of maintaining complex selectors, Claude visually understands calculators through screenshots.
 
-    Key Design Principles:
-    - Smart Agent, Dumb Tools: Client is mechanical, Claude provides intelligence
-    - Visual Understanding: Screenshots enable field mapping without hardcoding
-    - Exact Matching: Field names must match exactly as shown in UI (no normalization)
-    - Optimized Catalog: Compact format reduces tokens from 82K to 31K
+    Key Features:
+    - Universal Support: One approach works for all calculators
+    - Visual Understanding: Screenshots enable Claude to see and understand any calculator
+    - Smart Zoom: Automatically adjusts viewport to capture long calculators
+    - Overlay Handling: Removes sticky Results sections that obscure fields
 
-    Methods:
-        get_all_calculators(): Load optimized catalog (ID, name, category only)
-        search_calculators(): Use MDCalc's semantic web search
-        get_calculator_details(): Get screenshot for visual understanding
-        execute_calculator(): Execute with exact field names from screenshot
+    Main Methods:
+        get_all_calculators(): Load compact catalog of all 825 calculators
+        search_calculators(): Use MDCalc's semantic search
+        get_calculator_details(): Capture screenshot for visual understanding
+        execute_calculator(): Execute calculator with mapped values
     """
 
     def __init__(self):
@@ -300,11 +295,10 @@ class MDCalcClient:
 
     async def get_calculator_details(self, calculator_id: str) -> Dict:
         """
-        Get calculator details including a screenshot for visual understanding.
+        Get calculator screenshot for visual understanding.
 
-        This is the KEY method for Claude's visual understanding approach.
-        Instead of parsing DOM elements, we take a screenshot that Claude
-        can SEE and understand using vision capabilities.
+        Takes a screenshot of the calculator interface that Claude can analyze
+        visually to understand available fields and options.
 
         Args:
             calculator_id (str): Calculator ID (e.g., "1752") or slug (e.g., "heart-score")
@@ -314,13 +308,12 @@ class MDCalcClient:
                 - title (str): Calculator name
                 - url (str): Calculator URL
                 - screenshot_base64 (str): JPEG screenshot encoded as base64 (~23KB)
-                - fields (List): Detected fields (may be empty for React apps)
-                - fields_detected (int): Number of fields found
+                - fields (List): Detected fields (informational only)
 
-        Note:
-            The screenshot is the primary output. Field detection may return 0
-            for React-based calculators, which is expected. Claude uses vision
-            to understand the calculator structure from the screenshot.
+        Key Features:
+            - Dynamically zooms out for long calculators to fit in viewport
+            - Temporarily hides sticky Results overlay that covers bottom fields
+            - Optimized JPEG compression to minimize token usage
         """
         page = await self.context.new_page()
 
@@ -460,11 +453,7 @@ class MDCalcClient:
             # Take a screenshot of the calculator form
             screenshot_bytes = None
             try:
-                logger.info(f"Starting screenshot capture for calculator: {calculator_id}")
-
-                # STRATEGY: Dynamically adjust zoom to fit calculator in viewport
-                # First, find the calculator container and measure it
-                # Also check if there's a Results section that might overlay
+                # Measure calculator dimensions including last field position
                 measurements = await page.evaluate('''
                     () => {
                         const container = document.querySelector('.side-by-side-container, .calc__body');
@@ -480,152 +469,82 @@ class MDCalcClient:
                             lastFieldBottom = rect.bottom + scrollTop;
                         }
 
-                        // Check if there's a results section
-                        const resultsSection = document.querySelector('[class*="result"], [class*="Result"]');
-                        const hasResults = resultsSection !== null;
-
                         return {
                             calcHeight: calcHeight,
                             lastFieldBottom: lastFieldBottom,
-                            viewportHeight: window.innerHeight,
-                            hasResults: hasResults
+                            viewportHeight: window.innerHeight
                         };
                     }
                 ''')
 
                 calc_height = measurements['calcHeight']
-                viewport_height = measurements['viewportHeight']
                 last_field_bottom = measurements['lastFieldBottom']
-                has_results = measurements['hasResults']
+                viewport_height = measurements['viewportHeight']
 
-                logger.info(f"Calculator height: {calc_height}px, Last field bottom: {last_field_bottom}px, Viewport: {viewport_height}px, Has results: {has_results}")
-
-                # Calculate optimal zoom level
-                # Use the last field position if available, otherwise use container height
+                # Calculate optimal zoom to fit all fields in viewport
                 optimal_zoom = 100
+                # Use last field position if available, otherwise use container height
                 target_height = last_field_bottom if last_field_bottom > 0 else calc_height
 
                 if target_height > viewport_height:
-                    # Since we're hiding the Results overlay, we can use more of the viewport
-                    # Use 90% of viewport to fit the calculator with just a small margin
-                    margin_factor = 90
-                    optimal_zoom = int((viewport_height / target_height) * margin_factor)
+                    # Use 90% of viewport to fit the calculator with a small margin
+                    optimal_zoom = int((viewport_height / target_height) * 90)
                     optimal_zoom = max(50, min(optimal_zoom, 100))  # Clamp between 50-100%
-                    logger.info(f"Calculated zoom: {optimal_zoom}% (using {margin_factor}% margin)")
 
-                original_zoom = await page.evaluate('() => document.body.style.zoom || "100%"')
-                logger.info(f"Original zoom: {original_zoom}, Setting optimal zoom: {optimal_zoom}%")
+                    # Apply zoom
+                    await page.evaluate(f'() => {{ document.body.style.zoom = "{optimal_zoom}%"; }}')
+                    logger.info(f"Zoomed to {optimal_zoom}% to fit calculator (height: {target_height}px) in viewport")
 
-                # Apply the calculated zoom
-                await page.evaluate(f'() => {{ document.body.style.zoom = "{optimal_zoom}%"; }}')
-                logger.info(f"Set zoom to {optimal_zoom}% to fit calculator")
-
-                # CRITICAL: Hide the sticky Results overlay during screenshot
-                # MDCalc uses a sticky Results section that covers bottom fields
+                # Hide sticky Results overlay that covers bottom fields
                 await page.evaluate('''
                     () => {
-                        // Find and temporarily hide the Results section
-                        const results = document.querySelectorAll('[class*="result"], [class*="Result"], [class*="score"], .calc__result');
-                        results.forEach(el => {
+                        // Hide Results section and any sticky/fixed overlays
+                        const elements = document.querySelectorAll('[class*="result"], [class*="Result"], [class*="score"], .calc__result');
+                        elements.forEach(el => {
                             el.setAttribute('data-original-display', el.style.display);
                             el.style.display = 'none';
                         });
 
-                        // Also hide any sticky/fixed positioned elements that might overlay
-                        const allElements = document.querySelectorAll('*');
-                        allElements.forEach(el => {
+                        // Hide sticky/fixed elements containing results
+                        document.querySelectorAll('*').forEach(el => {
                             const style = window.getComputedStyle(el);
-                            if (style.position === 'sticky' || style.position === 'fixed') {
-                                // Check if it's part of the calculator results (not header/nav)
-                                const text = el.textContent || '';
-                                if (text.includes('Result') || text.includes('Score') || text.includes('point')) {
-                                    el.setAttribute('data-original-display', el.style.display);
-                                    el.style.display = 'none';
-                                }
+                            if ((style.position === 'sticky' || style.position === 'fixed') &&
+                                (el.textContent || '').match(/Result|Score|point/)) {
+                                el.setAttribute('data-original-display', el.style.display);
+                                el.style.display = 'none';
                             }
                         });
                     }
                 ''')
-                logger.info("Temporarily hid Results overlay for screenshot")
 
-                # Wait for layout to adjust
+                # Scroll to top and wait for layout
+                await page.evaluate('window.scrollTo(0, 0)')
                 await page.wait_for_timeout(500)
 
-                # Find the FIRST form field of ANY type in the calculator
-                # This includes: text inputs, radio buttons, checkboxes, selects, etc.
-                first_calc_field = await page.query_selector('''
-                    .side-by-side-container input,
-                    .side-by-side-container select,
-                    .side-by-side-container textarea,
-                    .side-by-side-container button[role="radio"],
-                    .calc__body input,
-                    .calc__body select,
-                    .calc__body textarea
-                '''.replace('\n', ' ').strip())
-
-                # Alternative: Find the first calc_input-wrapper which contains any field
-                if not first_calc_field:
-                    first_calc_field = await page.query_selector('.calc_input-wrapper__LavoA')
-
-                if first_calc_field:
-                    logger.info("Found first calculator field, scrolling to top of viewport")
-                    await first_calc_field.evaluate('(el) => el.scrollIntoView({block: "start", behavior: "instant"})')
-                    # With zoom out, we might not need as much scroll adjustment
-                    await page.evaluate('window.scrollBy(0, -100)')
-                else:
-                    # Fallback: just scroll to top
-                    await page.evaluate('window.scrollTo(0, 0)')
-
-                await page.wait_for_timeout(500)
-
-                # Log current viewport and page dimensions after zoom
-                dimensions = await page.evaluate('''
-                    () => {
-                        return {
-                            viewport: {
-                                width: window.innerWidth,
-                                height: window.innerHeight
-                            },
-                            zoom: document.body.style.zoom,
-                            scrollPosition: {
-                                x: window.pageXOffset || document.documentElement.scrollLeft,
-                                y: window.pageYOffset || document.documentElement.scrollTop
-                            }
-                        }
-                    }
-                ''')
-                logger.info(f"Page dimensions after zoom and scroll: {dimensions}")
-
-                # Take screenshot with zoomed out view
-                logger.info("Taking viewport screenshot with zoomed out view")
+                # Take screenshot (low quality JPEG to minimize size)
                 screenshot_bytes = await page.screenshot(
                     type='jpeg',
-                    quality=20,  # Low quality to reduce size
-                    full_page=False  # Just the viewport
+                    quality=20,
+                    full_page=False  # Viewport only
                 )
-                logger.info(f"Viewport screenshot captured: {len(screenshot_bytes) if screenshot_bytes else 0} bytes")
 
-                # Restore the Results section visibility
+                # Restore hidden elements and zoom
                 await page.evaluate('''
                     () => {
-                        // Restore all hidden elements
-                        const hidden = document.querySelectorAll('[data-original-display]');
-                        hidden.forEach(el => {
+                        // Restore visibility
+                        document.querySelectorAll('[data-original-display]').forEach(el => {
                             el.style.display = el.getAttribute('data-original-display') || '';
                             el.removeAttribute('data-original-display');
                         });
+                        // Reset zoom to 100%
+                        document.body.style.zoom = '100%';
                     }
                 ''')
-                logger.info("Restored Results overlay visibility")
-
-                # Restore original zoom
-                await page.evaluate(f'() => {{ document.body.style.zoom = "{original_zoom}"; }}')
-                logger.info(f"Restored zoom to: {original_zoom}")
 
                 # Convert to base64
                 if screenshot_bytes:
                     details['screenshot_base64'] = base64.b64encode(screenshot_bytes).decode('utf-8')
-                    logger.info(f"Screenshot captured: {len(screenshot_bytes)} bytes")
+                    logger.info(f"Screenshot captured: {len(screenshot_bytes)} bytes ({len(details['screenshot_base64']) // 1024}KB base64)")
 
             except Exception as e:
                 logger.warning(f"Failed to capture screenshot: {e}")
@@ -640,31 +559,26 @@ class MDCalcClient:
         """
         Execute calculator with provided input values.
 
-        This is a MECHANICAL function - it only clicks/fills what you specify.
-        YOU must first call get_calculator_details to SEE the calculator,
-        then map patient data to the EXACT button text or input values shown.
-
         Args:
-            calculator_id (str): Calculator ID or slug
-            inputs (Dict): Mapped field values where:
-                - Keys: Field names (e.g., "age", "history", "troponin")
+            calculator_id (str): Calculator ID (e.g., "1752") or slug (e.g., "heart-score")
+            inputs (Dict): Field values mapped to calculator inputs:
+                - Keys: Field names as shown in calculator
                 - Values: EXACT button text or numeric values
-                  Examples:
-                    - "age": "≥65" (button text)
-                    - "history": "Moderately suspicious" (button text)
-                    - "troponin": "≤1x normal limit" (button text)
-                    - "ldl": "120" (numeric input)
+
+                Examples:
+                    {"Age": "≥65", "History": "Moderately suspicious"}
+                    {"Total Cholesterol": "200", "HDL": "45"}
 
         Returns:
             Dict containing:
                 - success (bool): Whether calculation succeeded
-                - score (str): Calculated score (e.g., "5 points")
-                - risk (str): Risk category/percentage
-                - interpretation (str): Clinical interpretation
+                - score (str): Calculated score
+                - risk (str): Risk category or percentage
+                - interpretation (str): Clinical meaning
 
-        Important:
-            Values must match EXACTLY what appears in the calculator.
-            Use get_calculator_details first to see available options.
+        Note:
+            Must use EXACT text as shown in calculator buttons.
+            Call get_calculator_details first to see available options.
         """
         page = await self.context.new_page()
 
@@ -680,37 +594,13 @@ class MDCalcClient:
             await page.goto(url, wait_until='networkidle')
             await page.wait_for_timeout(2000)  # Wait for React to render
 
-            # DEBUG: Let's see what clickable elements are actually on the page
-            if logger.level <= logging.DEBUG:
-                all_clickables = await page.evaluate('''() => {
-                    // Try multiple possible selectors
-                    const buttons = Array.from(document.querySelectorAll('button')).map(b => ({text: b.textContent.trim(), tag: 'button'}));
-                    const divOptions = Array.from(document.querySelectorAll('div[class*="option"]')).map(d => ({text: d.textContent.trim(), tag: 'div.option', class: d.className}));
-                    const allDivs = Array.from(document.querySelectorAll('div')).filter(d => {
-                        const text = d.textContent.trim();
-                        return (text === 'Moderately suspicious' || text === '45-64' || text === 'Normal' ||
-                                text === '1-2 risk factors' || text.includes('normal limit'));
-                    }).map(d => ({text: d.textContent.trim(), tag: 'div', class: d.className}));
-
-                    return {
-                        buttons: buttons.slice(0, 10),
-                        divOptions: divOptions.slice(0, 10),
-                        targetDivs: allDivs.slice(0, 10)
-                    };
-                }''')
-                logger.debug(f"  Buttons: {all_clickables.get('buttons', [])}")
-                logger.debug(f"  Div options: {all_clickables.get('divOptions', [])}")
-                logger.debug(f"  Target divs: {all_clickables.get('targetDivs', [])}")
 
             # Fill inputs and click buttons based on input values
             for field_name, value in inputs.items():
-                logger.info(f"Trying to set {field_name} to '{value}'")
-
-                # For MDCalc calculators, most fields are buttons not inputs
-                # Only try input fields if the value looks numeric
+                logger.info(f"Setting {field_name} to '{value}'")
                 filled = False
 
-                # Check if value looks like a number (for numeric inputs like cholesterol values)
+                # Check if value is numeric (for input fields)
                 try:
                     float(value)
                     is_numeric = True
@@ -774,15 +664,9 @@ class MDCalcClient:
                             except:
                                 pass
 
-                # If not filled (or not numeric), try button clicking
+                # If not filled, try button clicking
                 if not filled:
-                    # NO NORMALIZATION - use exact field names as passed
-                    # The value should already be the exact button text
                     button_text = str(value)
-
-                    logger.info(f"  Trying to click button '{button_text}' for field '{field_name}'")
-
-                    # Try multiple strategies to click the button
                     clicked = False
 
                     # Strategy 1: Direct button text
