@@ -81,26 +81,81 @@ class MDCalcClient:
                             Set to False to see browser during demos.
                             Controlled by MDCALC_HEADLESS env var in MCP config.
             use_auth (bool): Load authentication state if available.
+
+        Demo Mode:
+            When headless=False and Chrome is running with --remote-debugging-port=9222,
+            connects to the existing browser instead of launching a new one.
+            This allows using a pre-positioned browser window for demos.
         """
         self.playwright = await async_playwright().start()
 
-        self.browser = await self.playwright.chromium.launch(
-            headless=headless,
-            args=['--disable-blink-features=AutomationControlled']
-        )
+        # Check if we should connect to existing browser (demo mode)
+        use_existing_browser = False
+        if not headless:
+            # Try to connect to existing Chrome instance on port 9222
+            try:
+                import socket
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                result = sock.connect_ex(('localhost', 9222))
+                sock.close()
+                use_existing_browser = (result == 0)
+                if use_existing_browser:
+                    logger.info("Demo mode: Connecting to existing Chrome browser on port 9222")
+            except:
+                pass
 
-        context_params = {
-            'viewport': {'width': 1920, 'height': 1080},
-            'user_agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120.0.0.0 Safari/537.36'
-        }
+        if use_existing_browser:
+            # Connect to existing browser instance
+            try:
+                self.browser = await self.playwright.chromium.connect_over_cdp(
+                    endpoint_url="http://localhost:9222",
+                    timeout=5000
+                )
+                logger.info("Successfully connected to existing Chrome browser")
+            except Exception as e:
+                logger.warning(f"Failed to connect to existing browser: {e}")
+                logger.info("Falling back to launching new browser")
+                # Fallback to launching new browser
+                self.browser = await self.playwright.chromium.launch(
+                    headless=False,
+                    args=['--disable-blink-features=AutomationControlled']
+                )
+        else:
+            # Launch new browser (normal mode)
+            self.browser = await self.playwright.chromium.launch(
+                headless=headless,
+                args=['--disable-blink-features=AutomationControlled']
+            )
 
-        if use_auth:
-            auth_state_path = self.load_auth_state()
-            if auth_state_path:
-                context_params['storage_state'] = auth_state_path
+        # For demo mode with existing browser, try to reuse existing context
+        if use_existing_browser:
+            # Get existing contexts
+            contexts = self.browser.contexts
+            if contexts:
+                # Reuse first available context
+                self.context = contexts[0]
+                logger.info(f"Demo mode: Reusing existing browser context with {len(self.context.pages)} open tabs")
+            else:
+                # Create new context in existing browser
+                self.context = await self.browser.new_context(
+                    viewport={'width': 1920, 'height': 1080},
+                    user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120.0.0.0 Safari/537.36'
+                )
+                logger.info("Demo mode: Created new context in existing browser")
+        else:
+            # Normal mode - create new context
+            context_params = {
+                'viewport': {'width': 1920, 'height': 1080},
+                'user_agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120.0.0.0 Safari/537.36'
+            }
 
-        self.context = await self.browser.new_context(**context_params)
-        logger.info("Browser initialized successfully")
+            if use_auth:
+                auth_state_path = self.load_auth_state()
+                if auth_state_path:
+                    context_params['storage_state'] = auth_state_path
+
+            self.context = await self.browser.new_context(**context_params)
+            logger.info("Browser initialized successfully")
 
     async def get_all_calculators(self) -> List[Dict]:
         """
