@@ -14,15 +14,52 @@ This system transforms MDCalc from a **pull-based** system (physicians manually 
 
 - 🏥 **Natural Language Interface**: Describe clinical scenarios conversationally
 - 👁️ **Visual Calculator Understanding**: Screenshots enable universal calculator support
-- 🔄 **Parallel Execution**: Run multiple calculators simultaneously
+- 🔄 **Smart Data Gathering**: Intelligently asks for missing critical information
 - 🧠 **Intelligent Orchestration**: Claude handles all clinical interpretation
 - 📊 **Optimized Catalog**: ~31K tokens (63% smaller) for all 825 calculators
 - 🔍 **Semantic Search**: MDCalc's sophisticated search, not keyword matching
 - ⚡ **Complete Coverage**: All 825 MDCalc calculators supported
+- 💬 **Physician-Friendly Input**: Accept flexible response formats (Y/N, natural language)
 
 ## Architecture
 
 ### Screenshot-Based Universal Calculator Support
+
+The system uses a revolutionary screenshot-based approach that enables support for ALL 825+ MDCalc calculators without any calculator-specific code:
+
+1. **Visual Understanding**: Claude receives a screenshot of each calculator (JPEG, ~23KB)
+2. **Field Recognition**: Claude SEEs all input fields, buttons, and options visually
+3. **Intelligent Mapping**: Claude maps patient data to the exact button text shown
+4. **Mechanical Execution**: The tool simply clicks buttons with matching text
+
+**Key Innovation**: The screenshot is the bridge between MDCalc's complex UI and Claude's intelligence. Even when Playwright can't detect React fields programmatically, Claude can SEE them in the screenshot and tell the tool exactly what to click.
+
+### Intelligent Data Gathering
+
+When critical clinical data is missing, the system intelligently gathers it through physician-friendly interactions:
+
+```
+User: "68yo male with chest pain, HTN, diabetes..."
+
+Claude: "To complete risk assessment, I need:
+         1. Pain radiates to arm/jaw?
+         2. Worse with breathing?
+         3. Diaphoresis?
+
+         Quick entry: 'N,N,Y' or describe"
+
+User: "no radiation, not pleuritic, sweating++"
+
+Claude: [Executes calculators with complete data]
+```
+
+**Benefits**:
+- **No failed calculations** - Always has required data before executing
+- **Time-efficient** - Batch all questions in one interaction
+- **Flexible input** - Accept Y/N, comma-separated, or natural language
+- **Clinical intelligence** - Only asks what changes management
+
+### Workflow Architecture
 
 ```
 User: "Calculate cardiac risk for my chest pain patient"
@@ -30,28 +67,35 @@ User: "Calculate cardiac risk for my chest pain patient"
          Claude Desktop Agent
                     ↓
     ┌──────────────────────────────┐
-    │     Parallel MCP Tools       │
-    ├──────────────┬───────────────┤
-    ↓              ↓
-Health Data    MDCalc Automation
-    │              │
-    │         1. Get Screenshot
-    │         2. Claude SEES fields
-    │         3. Maps patient data
-    │         4. Executes calculator
-    └──────────────┴───────────────┘
+    │  1. Search relevant calcs    │
+    │  2. Get screenshots (seq.)   │
+    │  3. Identify missing data    │
+    └──────────────────────────────┘
                     ↓
-          Claude Synthesizes Results
+         "Need: radiation? pleuritic?
+          Quick reply: Y/N"
+                    ↓
+          User: "N,N"
+                    ↓
+    ┌──────────────────────────────┐
+    │  4. Map data to buttons      │
+    │  5. Execute calculators      │
+    │  6. Extract results          │
+    └──────────────────────────────┘
+                    ↓
+          Claude Synthesizes
                     ↓
         "HEART Score: 5 (12% risk)
-         Consider admission..."
+         TIMI: 2 points (8% risk)
+         Recommend: Admission..."
 ```
 
 ### Design Principle: "Smart Agent, Dumb Tools"
 
-- **Claude (Agent)**: ALL intelligence, interpretation, clinical reasoning
+- **Claude (Agent)**: ALL intelligence, interpretation, clinical reasoning, data gathering
 - **MCP Tools**: Purely mechanical - screenshot, click, extract
 - **No hardcoded logic**: Works with any calculator through vision
+- **No assumptions**: Always asks for missing critical data
 
 ## Project Structure
 
@@ -140,21 +184,40 @@ See [mcp-servers/mdcalc-automation-mcp/README.md](mcp-servers/mdcalc-automation-
 
 ## Example Usage
 
+### Basic Interaction
 ```
 User: "I have a 68-year-old patient with chest pain, hypertension, and diabetes.
        Latest troponin is 0.02. What's their cardiac risk?"
 
+Claude: "I'll assess cardiac risk. First, I need a few clinical details:
+         1. Pain radiates to arm/jaw?
+         2. Worse with breathing?
+         3. Reproducible by palpation?
+         4. Known CAD >50%?
+
+         Quick reply: Y/N for each"
+
+User: "N,N,N,N"
+
 Claude's Process:
-1. Calls mdcalc_search("chest pain") → finds HEART Score, TIMI, GRACE
-2. Calls mdcalc_get_calculator("1752") → gets HEART Score with screenshot
-3. SEES the calculator fields visually
-4. Maps patient data:
+1. Calls mdcalc_search("chest pain") → finds HEART Score, TIMI, EDACS
+2. Calls mdcalc_get_calculator for each (sequentially)
+3. SEES the calculator fields visually in screenshots
+4. Maps patient data to exact button text:
    - Age 68 → "≥65" button
    - HTN + DM → "≥3 risk factors" button
    - Troponin 0.02 → "≤1x normal" button
-5. Calls mdcalc_execute with mapped values
-6. Returns: "HEART Score is 5 (12% risk). Consider admission and cardiology consultation."
+5. Calls mdcalc_execute with complete data
+6. Synthesizes: "HEART Score: 5 (12% risk), TIMI: 2 (8% risk)
+                  Moderate risk - recommend admission and cardiology consult."
 ```
+
+### Flexible Response Formats
+The system accepts various input formats for physician convenience:
+- **Comma-separated**: "Y,N,N,Y,N"
+- **Natural language**: "no radiation, not pleuritic"
+- **Batch negative**: "all no" or "none of the above"
+- **Partial**: "only #3 is yes, rest no"
 
 ## Key Improvements (Latest)
 
@@ -174,7 +237,13 @@ Claude's Process:
 - Spaces not underscores ("Risk factors" not "risk_factors")
 - Only pass fields that need changing from defaults
 
-### 4. Headless Mode Control
+### 4. Intelligent Data Gathering (NEW)
+- Automatically identifies missing critical data
+- Batches all questions into single interaction
+- Accepts flexible response formats
+- Only asks what changes clinical management
+
+### 5. Headless Mode Control
 - Set `MDCALC_HEADLESS="false"` for demos
 - Default `"true"` for production
 
