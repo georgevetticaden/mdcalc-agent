@@ -256,37 +256,44 @@ mdcalc_execute("70", {
 5. **Not checking the screenshot first** - Always get visual confirmation
 6. **Assuming defaults for critical fields** - Ask user for missing data
 
-### Calculator-Specific Requirements
+### Universal Calculator Discovery Principle
 
-#### HEART Score
-- **Always required**: History, Age, Risk factors
-- **Optional**: EKG (often pre-selected as "Normal"), Troponin (can be pending)
+**NEVER hardcode calculator-specific requirements**. Instead:
 
-#### TIMI Risk Score for UA/NSTEMI (7 criteria total)
-- **Must check ALL 7**, even if "No":
-  1. Age ≥65
-  2. ≥3 CAD risk factors
-  3. Known CAD (≥50% stenosis)
-  4. Aspirin use in past 7 days
-  5. Severe angina (≥2 episodes in 24h)
-  6. EKG ST changes ≥0.5mm
-  7. Positive cardiac marker
+1. **Get the screenshot first** - This shows you EVERYTHING about the calculator
+2. **Visually identify what's required** by looking at:
+   - Which fields have asterisks (*) or "Required" labels
+   - Which fields are already pre-selected (green/teal background)
+   - The structure and grouping of fields
+   - Any validation messages or hints
 
-#### EDACS
-- **Always required**: Age, Sex
-- **MUST HAVE ALL symptom fields**:
-  - Diaphoresis
-  - Pain radiates to arm/shoulder/neck/jaw
-  - Pain worsened by inspiration
-  - Pain reproduced by palpation
+3. **Learn from execution failures**:
+   - If execution returns false/null, examine the screenshot again
+   - Identify which fields might have been missing
+   - Ask user for those specific fields
+   - Retry with complete data
 
-#### CHA2DS2-VASc
-- **All fields required** - each comorbidity must be Yes/No
-- Don't skip any history fields even if seem unlikely
+4. **The screenshot IS the specification**:
+   - Don't memorize field requirements
+   - Don't assume based on calculator name
+   - Trust what you SEE in the screenshot
+   - Each calculator version might differ
 
-#### Wells PE
-- **Clinical signs required** - HR, leg swelling, hemoptysis
-- **Clinical judgment required** - "PE most likely diagnosis"
+**Example Discovery Process**:
+```
+1. Get screenshot of calculator
+2. SEE: "History" field with 3 options, "Age" field with ranges, etc.
+3. SEE: Some fields marked with *, some pre-selected
+4. Identify what data you have vs what's shown as required
+5. Ask for missing required fields in one batch
+6. Execute with complete data
+```
+
+This approach ensures the system works with:
+- New calculators added to MDCalc
+- Updated calculator interfaces
+- Different field requirements across versions
+- Any future calculator without code changes
 
 ### Workflow for Every Calculator Execution
 1. Call `mdcalc_get_calculator(calculator_id)`
@@ -441,13 +448,16 @@ Accept multiple formats flexibly:
 - **Partial with defaults**: "only #3 is yes, rest no"
 
 #### Critical vs Optional Data:
-- **MUST ASK** (Critical): Data that changes risk category or disposition
-  - EDACS: All symptom characteristics (radiation, pleuritic, reproducible)
-  - TIMI: Prior CAD, aspirin use, anginal frequency
-  - CHA2DS2-VASc: Each specific comorbidity
-- **CAN DEFAULT** (Optional): Data that refines within same risk tier
-  - Minor variations in symptom quality
-  - Exact timing if approximate is known
+- **MUST ASK** (Critical):
+  - Fields marked with asterisks (*) or "Required" in screenshot
+  - Fields that determine major risk categories
+  - Data that changes clinical disposition
+  - Fields without obvious defaults visible in UI
+- **CAN DEFAULT** (Optional):
+  - Fields with pre-selected values (green/teal background)
+  - Fields marked as optional in the UI
+  - Data that refines within same risk tier
+  - Fields where reasonable clinical defaults apply
 
 #### Smart Defaults:
 - **For UNMENTIONED symptoms**: Safe to assume "absent/no" after asking
