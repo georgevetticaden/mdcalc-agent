@@ -12,7 +12,8 @@ mdcalc-agent/
 │
 ├── agent/                             # Claude Desktop Agent Configuration
 │   ├── instructions/
-│   │   ├── system-prompt.md          # Main agent instructions with orchestration logic
+│   │   ├── mdcalc-clinical-companion-agent-instructions.md  # Main agent instructions
+│   │   ├── mdcalc-clinical-companion-agent-description.md   # Brief agent description
 │   │   ├── calculator-knowledge.md   # MDCalc calculator reference
 │   │   └── clinical-protocols.md     # Clinical decision guidelines
 │   │
@@ -168,7 +169,7 @@ mdcalc-agent/
 4. `mdcalc_mcp.py` - MCP server
 
 ### Priority 2 - Agent Configuration
-1. `agent/instructions/system-prompt.md` - Orchestration logic
+1. `agent/instructions/mdcalc-clinical-companion-agent-instructions.md` - Orchestration logic
 2. `agent/knowledge/clinical-pathways.json` - Calculator relationships
 3. `calculator_discovery.py` - Smart selection
 

@@ -5,9 +5,9 @@ This directory contains Claude Desktop Agent configuration and knowledge base.
 ## Structure:
 
 ### instructions/
-- `system-prompt.md` - Main agent instructions with orchestration logic
-- `calculator-knowledge.md` - MDCalc calculator reference information
-- `clinical-protocols.md` - Clinical decision guidelines
+- `mdcalc-clinical-companion-agent-instructions.md` - Main agent instructions with orchestration logic
+- `mdcalc-clinical-companion-agent-description.md` - Brief agent description for Claude Desktop
+- `mdcalc-execution-guide.md` - Quick reference for MDCalc execution
 
 ### knowledge/
 - `calculator-catalog.json` - MDCalc calculator metadata

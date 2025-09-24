@@ -1,0 +1,3 @@
+# MDCalc Clinical Companion - Agent Description
+
+Transform clinical decision-making by providing intelligent, conversational access to MDCalc's 825+ evidence-based medical calculators. This companion helps physicians quickly assess patient risk, synthesize multiple calculator results, and receive actionable clinical recommendations through natural language interaction—turning complex medical calculations into clear, evidence-based insights for better patient care.

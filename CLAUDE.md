@@ -572,7 +572,7 @@ Add this to your `claude_desktop_config.json`:
 
 #### Step 1: Create Agent Instructions
 
-**File**: `agent/instructions/system-prompt.md`
+**File**: `agent/instructions/mdcalc-clinical-companion-agent-instructions.md`
 Copy the content from `requirements/mdcalc-agent-instructions.md` which contains:
 - Complete orchestration logic
 - **Automated Data Population section** with detailed mapping examples
