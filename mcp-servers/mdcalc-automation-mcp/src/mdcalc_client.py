@@ -251,12 +251,20 @@ class MDCalcClient:
                 () => {{
                     const limit = {limit};
 
+                    // Check if we're actually on a search results page
+                    // MDCalc shows "No tool found for..." when there are no results
+                    // Look for the specific div with class containing "search-results-message"
+                    const noToolFound = document.querySelector('.search_search-results-message__nK_GX, [class*="search-results-message"]');
+                    if (noToolFound && noToolFound.textContent.includes('No tool')) {{
+                        console.log("No search results - MDCalc shows:", noToolFound.textContent);
+                        return [];
+                    }}
+
                     // Look for search result rows - these have the specific class
                     const resultRows = document.querySelectorAll('.calculatorRow_row-container__HM_dC');
 
                     if (resultRows.length === 0) {{
                         // No results found - return empty array
-                        // This is correct behavior when search has no matches
                         return [];
                     }}
 
@@ -475,12 +483,12 @@ class MDCalcClient:
                         quality=30  # Lower quality for smaller size
                     )
                 else:
-                    # Fallback: crop to just the center portion of viewport
-                    # This avoids headers, footers, ads
+                    # Fallback: take full viewport screenshot
+                    # Need to capture entire calculator including Age field at top
                     screenshot_bytes = await page.screenshot(
                         type='jpeg',
                         quality=30,  # Lower quality
-                        clip={'x': 200, 'y': 200, 'width': 800, 'height': 600}  # Crop to center
+                        full_page=False  # Just viewport, not entire scrollable page
                     )
 
                 # Convert to base64
