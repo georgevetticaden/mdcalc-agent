@@ -460,23 +460,167 @@ class MDCalcClient:
             # Take a screenshot of the calculator form
             screenshot_bytes = None
             try:
-                # Try to find just the calculator form area (not the whole page)
-                # Look for the actual form container
-                calc_selectors = [
-                    'div[class*="calc_container"]',  # MDCalc's main calc container
-                    'div[class*="calculator-form"]',
-                    'form',
-                    '.calc-main',
-                    'main'
-                ]
+                logger.info(f"Starting screenshot capture for calculator: {calculator_id}")
 
-                # Always take full viewport screenshot to ensure we capture everything
-                # Don't try to crop to just the calculator container as it may cut off fields
+                # STRATEGY: Dynamically adjust zoom to fit calculator in viewport
+                # First, find the calculator container and measure it
+                # Also check if there's a Results section that might overlay
+                measurements = await page.evaluate('''
+                    () => {
+                        const container = document.querySelector('.side-by-side-container, .calc__body');
+                        const calcHeight = container ? container.scrollHeight : 0;
+
+                        // Find the last input field to ensure it's visible
+                        const allInputs = container ? container.querySelectorAll('input, select, textarea, [class*="calc_option"]') : [];
+                        let lastFieldBottom = 0;
+                        if (allInputs.length > 0) {
+                            const lastField = allInputs[allInputs.length - 1];
+                            const rect = lastField.getBoundingClientRect();
+                            const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                            lastFieldBottom = rect.bottom + scrollTop;
+                        }
+
+                        // Check if there's a results section
+                        const resultsSection = document.querySelector('[class*="result"], [class*="Result"]');
+                        const hasResults = resultsSection !== null;
+
+                        return {
+                            calcHeight: calcHeight,
+                            lastFieldBottom: lastFieldBottom,
+                            viewportHeight: window.innerHeight,
+                            hasResults: hasResults
+                        };
+                    }
+                ''')
+
+                calc_height = measurements['calcHeight']
+                viewport_height = measurements['viewportHeight']
+                last_field_bottom = measurements['lastFieldBottom']
+                has_results = measurements['hasResults']
+
+                logger.info(f"Calculator height: {calc_height}px, Last field bottom: {last_field_bottom}px, Viewport: {viewport_height}px, Has results: {has_results}")
+
+                # Calculate optimal zoom level
+                # Use the last field position if available, otherwise use container height
+                optimal_zoom = 100
+                target_height = last_field_bottom if last_field_bottom > 0 else calc_height
+
+                if target_height > viewport_height:
+                    # Since we're hiding the Results overlay, we can use more of the viewport
+                    # Use 90% of viewport to fit the calculator with just a small margin
+                    margin_factor = 90
+                    optimal_zoom = int((viewport_height / target_height) * margin_factor)
+                    optimal_zoom = max(50, min(optimal_zoom, 100))  # Clamp between 50-100%
+                    logger.info(f"Calculated zoom: {optimal_zoom}% (using {margin_factor}% margin)")
+
+                original_zoom = await page.evaluate('() => document.body.style.zoom || "100%"')
+                logger.info(f"Original zoom: {original_zoom}, Setting optimal zoom: {optimal_zoom}%")
+
+                # Apply the calculated zoom
+                await page.evaluate(f'() => {{ document.body.style.zoom = "{optimal_zoom}%"; }}')
+                logger.info(f"Set zoom to {optimal_zoom}% to fit calculator")
+
+                # CRITICAL: Hide the sticky Results overlay during screenshot
+                # MDCalc uses a sticky Results section that covers bottom fields
+                await page.evaluate('''
+                    () => {
+                        // Find and temporarily hide the Results section
+                        const results = document.querySelectorAll('[class*="result"], [class*="Result"], [class*="score"], .calc__result');
+                        results.forEach(el => {
+                            el.setAttribute('data-original-display', el.style.display);
+                            el.style.display = 'none';
+                        });
+
+                        // Also hide any sticky/fixed positioned elements that might overlay
+                        const allElements = document.querySelectorAll('*');
+                        allElements.forEach(el => {
+                            const style = window.getComputedStyle(el);
+                            if (style.position === 'sticky' || style.position === 'fixed') {
+                                // Check if it's part of the calculator results (not header/nav)
+                                const text = el.textContent || '';
+                                if (text.includes('Result') || text.includes('Score') || text.includes('point')) {
+                                    el.setAttribute('data-original-display', el.style.display);
+                                    el.style.display = 'none';
+                                }
+                            }
+                        });
+                    }
+                ''')
+                logger.info("Temporarily hid Results overlay for screenshot")
+
+                # Wait for layout to adjust
+                await page.wait_for_timeout(500)
+
+                # Find the FIRST form field of ANY type in the calculator
+                # This includes: text inputs, radio buttons, checkboxes, selects, etc.
+                first_calc_field = await page.query_selector('''
+                    .side-by-side-container input,
+                    .side-by-side-container select,
+                    .side-by-side-container textarea,
+                    .side-by-side-container button[role="radio"],
+                    .calc__body input,
+                    .calc__body select,
+                    .calc__body textarea
+                '''.replace('\n', ' ').strip())
+
+                # Alternative: Find the first calc_input-wrapper which contains any field
+                if not first_calc_field:
+                    first_calc_field = await page.query_selector('.calc_input-wrapper__LavoA')
+
+                if first_calc_field:
+                    logger.info("Found first calculator field, scrolling to top of viewport")
+                    await first_calc_field.evaluate('(el) => el.scrollIntoView({block: "start", behavior: "instant"})')
+                    # With zoom out, we might not need as much scroll adjustment
+                    await page.evaluate('window.scrollBy(0, -100)')
+                else:
+                    # Fallback: just scroll to top
+                    await page.evaluate('window.scrollTo(0, 0)')
+
+                await page.wait_for_timeout(500)
+
+                # Log current viewport and page dimensions after zoom
+                dimensions = await page.evaluate('''
+                    () => {
+                        return {
+                            viewport: {
+                                width: window.innerWidth,
+                                height: window.innerHeight
+                            },
+                            zoom: document.body.style.zoom,
+                            scrollPosition: {
+                                x: window.pageXOffset || document.documentElement.scrollLeft,
+                                y: window.pageYOffset || document.documentElement.scrollTop
+                            }
+                        }
+                    }
+                ''')
+                logger.info(f"Page dimensions after zoom and scroll: {dimensions}")
+
+                # Take screenshot with zoomed out view
+                logger.info("Taking viewport screenshot with zoomed out view")
                 screenshot_bytes = await page.screenshot(
                     type='jpeg',
-                    quality=30,  # Lower quality for smaller size
-                    full_page=False  # Just viewport, not entire scrollable page
+                    quality=20,  # Low quality to reduce size
+                    full_page=False  # Just the viewport
                 )
+                logger.info(f"Viewport screenshot captured: {len(screenshot_bytes) if screenshot_bytes else 0} bytes")
+
+                # Restore the Results section visibility
+                await page.evaluate('''
+                    () => {
+                        // Restore all hidden elements
+                        const hidden = document.querySelectorAll('[data-original-display]');
+                        hidden.forEach(el => {
+                            el.style.display = el.getAttribute('data-original-display') || '';
+                            el.removeAttribute('data-original-display');
+                        });
+                    }
+                ''')
+                logger.info("Restored Results overlay visibility")
+
+                # Restore original zoom
+                await page.evaluate(f'() => {{ document.body.style.zoom = "{original_zoom}"; }}')
+                logger.info(f"Restored zoom to: {original_zoom}")
 
                 # Convert to base64
                 if screenshot_bytes:
