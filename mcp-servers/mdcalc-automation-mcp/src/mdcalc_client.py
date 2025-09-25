@@ -657,6 +657,38 @@ class MDCalcClient:
                 if is_numeric_value:
                     logger.info(f"  Value '{value}' is numeric, trying input fields first")
 
+                    # NEW Strategy 0: Try Playwright's native type method with exact field names
+                    field_name_lower = field_name.lower().replace(' ', '')
+                    selectors = [
+                        f'input[name="{field_name_lower}"]',  # Exact name attribute
+                        f'input[placeholder*="{field_name}" i]',  # Placeholder text
+                    ]
+
+                    for selector in selectors:
+                        try:
+                            elements = await page.locator(selector).all()
+                            for elem in elements:
+                                if await elem.is_visible():
+                                    # Click to focus
+                                    await elem.click()
+                                    # Clear and type with delay to trigger React events
+                                    await elem.fill('')
+                                    await elem.type(str(value), delay=100)  # Type each character with 100ms delay
+                                    # Press Tab to trigger blur
+                                    await elem.press('Tab')
+                                    filled = True
+                                    logger.info(f"  ✅ Filled using Playwright native type: {field_name} = {value}")
+                                    break
+                            if filled:
+                                break
+                        except Exception as e:
+                            logger.debug(f"  Playwright selector {selector} failed: {e}")
+                            continue
+
+                    if filled:
+                        await asyncio.sleep(0.5)  # Give React time to update
+                        continue
+
                     # Strategy 1: Find the CORRECT input field by better field-to-input association
                     try:
                         # Look for the field label and find associated input
@@ -731,16 +763,31 @@ class MDCalcClient:
                                     if (input) {
                                         console.log('Found input by for attribute:', inputId);
                                         // Fill and return
-                                        input.value = value;
-                                        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                                            window.HTMLInputElement.prototype,
-                                            'value'
-                                        ).set;
-                                        nativeInputValueSetter.call(input, value);
-                                        input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-                                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                                        console.log('Found input by for attribute:', inputId);
+
+                                        // Simulate real user typing
                                         input.focus();
+                                        input.select();
+
+                                        // Clear existing value first
+                                        input.value = '';
+                                        input.dispatchEvent(new Event('input', { bubbles: true }));
+
+                                        // Type each character
+                                        for (let char of value.toString()) {
+                                            input.value += char;
+                                            input.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+                                            input.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
+                                            input.dispatchEvent(new Event('input', { bubbles: true }));
+                                            input.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+                                        }
+
+                                        // Trigger change and blur
+                                        input.dispatchEvent(new Event('change', { bubbles: true }));
                                         input.blur();
+                                        input.dispatchEvent(new Event('blur', { bubbles: true }))
+
+                                        console.log('Filled', input.name || 'input', 'with', value);
                                         return true;
                                     }
                                 }
@@ -761,17 +808,29 @@ class MDCalcClient:
                                                 console.log('Input already has value:', nextSibling.value, 'skipping...');
                                                 break;
                                             }
-                                            // Fill the input
-                                            nextSibling.value = value;
-                                            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                                                window.HTMLInputElement.prototype,
-                                                'value'
-                                            ).set;
-                                            nativeInputValueSetter.call(nextSibling, value);
-                                            nextSibling.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-                                            nextSibling.dispatchEvent(new Event('change', { bubbles: true }));
+                                            // Simulate real user typing
                                             nextSibling.focus();
+                                            nextSibling.select();
+
+                                            // Clear existing value first
+                                            nextSibling.value = '';
+                                            nextSibling.dispatchEvent(new Event('input', { bubbles: true }));
+
+                                            // Type each character
+                                            for (let char of value.toString()) {
+                                                nextSibling.value += char;
+                                                nextSibling.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+                                                nextSibling.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
+                                                nextSibling.dispatchEvent(new Event('input', { bubbles: true }));
+                                                nextSibling.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+                                            }
+
+                                            // Trigger change and blur
+                                            nextSibling.dispatchEvent(new Event('change', { bubbles: true }));
                                             nextSibling.blur();
+                                            nextSibling.dispatchEvent(new Event('blur', { bubbles: true }));
+
+                                            console.log('Filled', nextSibling.name || 'input', 'with', value);
                                             return true;
                                         }
                                     }
@@ -786,16 +845,30 @@ class MDCalcClient:
                                                 break;
                                             }
                                             console.log('Found input in sibling for', fieldName);
-                                            inputInSibling.value = value;
-                                            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                                                window.HTMLInputElement.prototype,
-                                                'value'
-                                            ).set;
-                                            nativeInputValueSetter.call(inputInSibling, value);
-                                            inputInSibling.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-                                            inputInSibling.dispatchEvent(new Event('change', { bubbles: true }));
+
+                                            // Simulate real user typing
                                             inputInSibling.focus();
+                                            inputInSibling.select();
+
+                                            // Clear existing value first
+                                            inputInSibling.value = '';
+                                            inputInSibling.dispatchEvent(new Event('input', { bubbles: true }));
+
+                                            // Type each character
+                                            for (let char of value.toString()) {
+                                                inputInSibling.value += char;
+                                                inputInSibling.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+                                                inputInSibling.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
+                                                inputInSibling.dispatchEvent(new Event('input', { bubbles: true }));
+                                                inputInSibling.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+                                            }
+
+                                            // Trigger change and blur
+                                            inputInSibling.dispatchEvent(new Event('change', { bubbles: true }));
                                             inputInSibling.blur();
+                                            inputInSibling.dispatchEvent(new Event('blur', { bubbles: true }));
+
+                                            console.log('Filled', inputInSibling.name || 'input', 'with', value);
                                             return true;
                                         }
                                     }
@@ -834,17 +907,29 @@ class MDCalcClient:
                                         console.log('Input details - placeholder:', closest.placeholder, 'current value:', closest.value);
 
                                         const input = closest.element;
-                                        input.value = value;
-                                        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                                            window.HTMLInputElement.prototype,
-                                            'value'
-                                        ).set;
-                                        nativeInputValueSetter.call(input, value);
-                                        input.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-                                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                                        // Simulate real user typing
                                         input.focus();
+                                        input.select();
+
+                                        // Clear existing value first
+                                        input.value = '';
+                                        input.dispatchEvent(new Event('input', { bubbles: true }));
+
+                                        // Type each character
+                                        for (let char of value.toString()) {
+                                            input.value += char;
+                                            input.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+                                            input.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
+                                            input.dispatchEvent(new Event('input', { bubbles: true }));
+                                            input.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+                                        }
+
+                                        // Trigger change and blur
+                                        input.dispatchEvent(new Event('change', { bubbles: true }));
                                         input.blur();
-                                        console.log('Successfully filled', fieldName, 'with', value);
+                                        input.dispatchEvent(new Event('blur', { bubbles: true }));
+
+                                        console.log('Successfully filled', fieldName, 'with', value, '- tracker:', !!input._valueTracker);
                                         return true;
                                     }
                                 }
@@ -986,31 +1071,56 @@ class MDCalcClient:
                             # If there's only one element, click it (no ambiguity)
                             if count == 1:
                                 element = elements.first
-                                # Check if already selected - check computed styles more carefully
-                                element_state = await element.evaluate('''el => {
-                                    const style = window.getComputedStyle(el);
-                                    const bgColor = style.backgroundColor;
+                                # Check if already selected - check both CSS classes and background colors
+                                element_info = await element.evaluate('''el => {
+                                    // Strategy 1: Check CSS classes (common pattern)
+                                    // MDCalc uses class patterns like "calc_btn-selected" for selected state
+                                    let checkElement = el;
+                                    let maxLevels = 3;
+                                    let hasSelectedClass = false;
 
-                                    // MDCalc uses teal/green for selected state
-                                    // rgb(26, 188, 156) is the teal color
-                                    // Check if background is teal/green (selected state)
-                                    const isTeal = bgColor === 'rgb(26, 188, 156)' ||
-                                                  bgColor === 'rgba(26, 188, 156, 1)';
+                                    while (checkElement && maxLevels > 0) {
+                                        const classes = checkElement.className || '';
 
-                                    // Also check parent element for selection state
-                                    let parentHasTeal = false;
-                                    if (el.parentElement) {
-                                        const parentBg = window.getComputedStyle(el.parentElement).backgroundColor;
-                                        parentHasTeal = parentBg === 'rgb(26, 188, 156)' ||
-                                                       parentBg === 'rgba(26, 188, 156, 1)';
+                                        // Check if this element has selection indicators
+                                        if (classes.includes('selected') ||
+                                            classes.includes('active') ||
+                                            classes.includes('checked')) {
+                                            hasSelectedClass = true;
+                                            break;
+                                        }
+
+                                        checkElement = checkElement.parentElement;
+                                        maxLevels--;
                                     }
 
-                                    return isTeal || parentHasTeal;
+                                    // Strategy 2: Check background colors (for calculators that use color styling)
+                                    const style = window.getComputedStyle(el);
+                                    const bgColor = style.backgroundColor;
+                                    const parentBg = el.parentElement ?
+                                        window.getComputedStyle(el.parentElement).backgroundColor : '';
+
+                                    // Check for teal/green selected state (rgb(26, 188, 156))
+                                    const hasTealBg = bgColor === 'rgb(26, 188, 156)' ||
+                                                     bgColor === 'rgba(26, 188, 156, 1)' ||
+                                                     parentBg === 'rgb(26, 188, 156)' ||
+                                                     parentBg === 'rgba(26, 188, 156, 1)';
+
+                                    return {
+                                        isSelected: hasSelectedClass || hasTealBg,
+                                        hasClass: hasSelectedClass,
+                                        hasColor: hasTealBg,
+                                        classes: el.className || '',
+                                        bgColor: bgColor
+                                    };
                                 }''')
+
+                                logger.info(f"  🔍 Element state: selected={element_info['isSelected']} (class={element_info['hasClass']}, color={element_info['hasColor']}), classes='{element_info['classes']}'")
+                                element_state = element_info['isSelected']
 
                                 if element_state:
                                     clicked = True
-                                    logger.info(f"  ✅ Strategy 2: Option already selected: {button_text}")
+                                    logger.info(f"  ✅ Strategy 2: Option already selected (skipping click): {button_text}")
                                 else:
                                     await element.click()
                                     clicked = True
@@ -1060,24 +1170,41 @@ class MDCalcClient:
                                 }''', field_name)
 
                                 if is_in_field:
-                                    # Check if already selected using exact RGB values
+                                    # Check if already selected using both class names and colors
                                     button_state = await button.evaluate('''el => {
+                                        // Check 1: CSS classes
+                                        let checkElement = el;
+                                        let maxLevels = 3;
+                                        let hasSelectedClass = false;
+
+                                        while (checkElement && maxLevels > 0) {
+                                            const classes = checkElement.className || '';
+                                            if (classes.includes('selected') ||
+                                                classes.includes('active') ||
+                                                classes.includes('checked')) {
+                                                hasSelectedClass = true;
+                                                break;
+                                            }
+                                            checkElement = checkElement.parentElement;
+                                            maxLevels--;
+                                        }
+
+                                        // Check 2: Background colors
                                         const bgColor = window.getComputedStyle(el).backgroundColor;
-                                        const parentBgColor = el.parentElement ?
+                                        const parentBg = el.parentElement ?
                                             window.getComputedStyle(el.parentElement).backgroundColor : '';
 
-                                        // MDCalc uses rgb(26, 188, 156) for selected state
-                                        const isTeal = bgColor === 'rgb(26, 188, 156)' ||
-                                                      bgColor === 'rgba(26, 188, 156, 1)' ||
-                                                      parentBgColor === 'rgb(26, 188, 156)' ||
-                                                      parentBgColor === 'rgba(26, 188, 156, 1)';
+                                        const hasTealBg = bgColor === 'rgb(26, 188, 156)' ||
+                                                         bgColor === 'rgba(26, 188, 156, 1)' ||
+                                                         parentBg === 'rgb(26, 188, 156)' ||
+                                                         parentBg === 'rgba(26, 188, 156, 1)';
 
-                                        return isTeal;
+                                        return hasSelectedClass || hasTealBg;
                                     }''')
 
                                     if button_state:
                                         clicked = True
-                                        logger.info(f"  ✅ Strategy 3: Button already selected for field '{field_name}': {button_text}")
+                                        logger.info(f"  ✅ Strategy 3: Button already selected (skipping click) for field '{field_name}': {button_text}")
                                     else:
                                         await button.click()
                                         clicked = True
@@ -1121,13 +1248,30 @@ class MDCalcClient:
                                         if (foundNearField) {
                                             console.log('Found button near field, clicking:', elementText);
 
-                                            // Check if not already selected
+                                            // Check if not already selected (both class and color)
+                                            // Check 1: CSS classes
+                                            let checkEl = element;
+                                            let hasSelectedClass = false;
+                                            for (let i = 0; i < 3 && checkEl; i++) {
+                                                const classes = checkEl.className || '';
+                                                if (classes.includes('selected') ||
+                                                    classes.includes('active') ||
+                                                    classes.includes('checked')) {
+                                                    hasSelectedClass = true;
+                                                    break;
+                                                }
+                                                checkEl = checkEl.parentElement;
+                                            }
+
+                                            // Check 2: Background color
                                             const bgColor = window.getComputedStyle(element).backgroundColor;
-                                            const isSelected = bgColor === 'rgb(26, 188, 156)' ||
-                                                             bgColor === 'rgba(26, 188, 156, 1)';
+                                            const hasTealBg = bgColor === 'rgb(26, 188, 156)' ||
+                                                            bgColor === 'rgba(26, 188, 156, 1)';
+
+                                            const isSelected = hasSelectedClass || hasTealBg;
 
                                             if (isSelected) {
-                                                console.log('Button already selected');
+                                                console.log('Button already selected (skipping)');
                                                 return true;
                                             }
 
@@ -1160,7 +1304,8 @@ class MDCalcClient:
                     await page.wait_for_timeout(100)
 
             # Wait for results to update (MDCalc takes time to calculate)
-            await page.wait_for_timeout(2000)
+            # Increased timeout to ensure React has processed all input events
+            await page.wait_for_timeout(3000)
 
             # Take a screenshot of the result (for agent to see what happened)
             result_screenshot_base64 = None

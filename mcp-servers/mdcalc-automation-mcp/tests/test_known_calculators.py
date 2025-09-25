@@ -268,6 +268,50 @@ class KnownCalculatorTests:
         self.test_results.append(result)
         return result
 
+    async def test_creatinine_clearance(self) -> Dict:
+        """
+        Test Creatinine Clearance (Cockcroft-Gault) (ID: 43) - Mixed numeric inputs with buttons
+        This calculator has pre-selected "Female" and needs all numeric fields filled
+        """
+        print("\n" + "="*60)
+        print("Testing Creatinine Clearance (Cockcroft-Gault)")
+        print("="*60)
+
+        result = {"calculator": "Creatinine Clearance", "success": False}
+
+        try:
+            # Get calculator details
+            print("Getting calculator details...")
+            details = await self.client.get_calculator_details("43")
+            print(f"✅ Title: {details.get('title', 'Unknown')}")
+            print(f"✅ Found {len(details.get('fields', []))} fields")
+
+            # Execute with test data - all numeric fields must be filled
+            print("\nExecuting with test data...")
+            test_inputs = {
+                'Age': '72',         # Numeric input
+                'Sex': 'Female',     # Button selection (Female is pre-selected by default)
+                'Weight': '172',     # Numeric input
+                'Creatinine': '1.3', # Numeric input
+                'Height': '64'       # Numeric input (optional but we'll provide it)
+            }
+
+            execution_result = await self.client.execute_calculator("43", test_inputs)
+
+            if execution_result.get('success'):
+                result['success'] = True
+                result['creatinine_clearance'] = execution_result.get('score')
+                print(f"✅ Execution successful! CrCl: {execution_result.get('score')}")
+            else:
+                print("⚠️ Execution completed but no result extracted")
+
+        except Exception as e:
+            result['error'] = str(e)
+            print(f"❌ Error: {e}")
+
+        self.test_results.append(result)
+        return result
+
     async def test_search_functionality(self) -> Dict:
         """
         Test search functionality
@@ -372,6 +416,7 @@ async def main():
                 'cha2ds2': tester.test_cha2ds2_vasc,
                 'sofa': tester.test_sofa_score,
                 'apache': tester.test_apache_ii,
+                'creatinine': tester.test_creatinine_clearance,
                 'search': tester.test_search_functionality
             }
 
@@ -388,6 +433,7 @@ async def main():
             await tester.test_heart_score()
             await tester.test_ldl_calculated()
             await tester.test_cha2ds2_vasc()
+            await tester.test_creatinine_clearance()
             await tester.test_sofa_score()
             await tester.test_apache_ii()
 

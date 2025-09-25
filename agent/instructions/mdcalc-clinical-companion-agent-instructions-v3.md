@@ -272,10 +272,12 @@ When multiple options describe similar conditions, select based on PATIENT DATA:
 
 ### 8. REQUIRED FIELD EXECUTION
 **CRITICAL**: All blank/unset fields MUST be included in your inputs object:
-- If a field shows no selection (blank buttons, empty inputs) → **REQUIRED**
-- If a field is pre-selected correctly (green/teal matches patient) → **SKIP**
-- If a field is pre-selected incorrectly → **INCLUDE to change**
+- If a field shows NO selection (all buttons white/unselected) → **REQUIRED** - include ALL fields
+- If a field is pre-selected (green/teal button) AND matches patient → **SKIP** (DO NOT include)
+- If a field is pre-selected (green/teal button) BUT wrong for patient → **INCLUDE to change**
 - **NEVER** omit blank/unset fields - they are required inputs
+- **IMPORTANT**: Most calculators start with ALL fields unselected (white buttons) - include everything
+- **WARNING**: Including an already-selected (teal) value will toggle it OFF
 
 ### 9. NO HALLUCINATION
 When execution fails, NEVER:
@@ -301,7 +303,7 @@ ALWAYS:
 
 ### Common Failure Patterns
 1. **Using dropdown option as field name** → Use actual field name from label
-2. **Including pre-selected values** → Only include changes (toggles OFF if included)
+2. **Including pre-selected values** → Only include fields that need to change (including defaults toggles them OFF)
 3. **Wrong text format** → Check hyphen vs en dash for decimal ranges
 4. **Missing numeric inputs** → PaO₂/FiO₂ are TWO separate numeric fields, not dropdowns
 5. **Using exact capitalization** → Field names must match screenshot exactly
