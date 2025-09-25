@@ -98,9 +98,51 @@ Based on real-world usage patterns and the HTWB study:
 - **Zero** maintenance when calculators update
 - **Parallel execution** of multiple relevant calculators
 
-## 🎬 Demo Video
+## 🎬 Demo Video & Key Technical Insights
 
 [**Watch Live Demo →**](https://youtu.be/YOUR_VIDEO_ID) See the system in action with real patient data and multiple calculator orchestration.
+
+### Real-World Demo Scenarios
+
+Based on the scenarios in [`requirements/mdcalc-demo-scenarios.md`](requirements/mdcalc-demo-scenarios.md), here are key technical breakthroughs demonstrated:
+
+#### 1. **Conditional Field Handling - APACHE II Example**
+**Challenge**: When FiO₂ ≥50% is selected, a new "A-a gradient" field dynamically appears, replacing the PaO₂ field
+**Solution**:
+- Initial `get_calculator_details` captures base form
+- Agent executes with known fields
+- **Result screenshot reveals the new conditional field**
+- Agent visually detects the missing "A-a gradient" field
+- **Intelligent retry** with correct field value: `"A-a gradient": "350-499"`
+
+**Key Insight**: The dual-screenshot approach (form + result) enables self-correction without hardcoded logic
+
+#### 2. **Intelligent Value Derivation - SOFA Example**
+**Challenge**: User provides P/F ratio (150), but calculator needs separate PaO₂ and FiO₂ inputs
+**Agent's Intelligence**:
+```
+DERIVED VALUES (I calculated):
+• PaO₂ = 90 mmHg (calculated from P/F ratio 150 × FiO₂ 0.60)
+• MAP = 59 mmHg (calculated from BP 88/45: DBP + (SBP-DBP)/3)
+• 24-hour UOP = 480 mL (calculated from 20cc/hr × 4 hours, extrapolated)
+```
+
+**Key Insight**: Agent performs complex clinical calculations and component separation automatically
+
+#### 3. **Universal Field Detection**
+**Challenge**: Different calculators use different UI patterns (buttons, toggles, inputs, colored links)
+**Solution**: Visual understanding detects ALL interactive elements regardless of styling
+- Green button groups ✅
+- Orange/colored links (Glasgow Coma Scale) ✅
+- Yes/No toggles ✅
+- Numeric inputs with placeholders ✅
+
+#### 4. **Clinical Context Mapping**
+**Challenge**: Patient on norepinephrine 0.08 mcg/kg/min with MAP 59
+**Agent's Logic**: Selects "DOPamine >5, EPINEPHrine ≤0.1, or norEPINEPHrine ≤0.1" over "MAP <70 mmHg"
+**Reasoning**: Vasopressor requirement indicates greater cardiovascular dysfunction (higher SOFA score)
+
+**Key Insight**: Agent makes clinically appropriate decisions based on severity hierarchy
 
 ## 🔮 Future Possibilities
 
