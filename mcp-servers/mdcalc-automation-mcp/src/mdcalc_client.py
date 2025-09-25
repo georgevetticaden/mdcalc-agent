@@ -43,6 +43,7 @@ class MDCalcClient:
     - Visual Understanding: Screenshots enable Claude to see and understand any calculator
     - Smart Zoom: Automatically adjusts viewport to capture long calculators
     - Overlay Handling: Removes sticky Results sections that obscure fields
+    - Tab Management: Keeps calculator tabs open for user review (creates new tabs for each action)
 
     Main Methods:
         get_all_calculators(): Load compact catalog of all 825 calculators
@@ -295,7 +296,9 @@ class MDCalcClient:
             return calculators
 
         finally:
-            await page.close()
+            # Keep page open for user to review while looking at field inventory/mappings
+            # await page.close()
+            pass
 
     async def ensure_browser_connected(self):
         """Ensure browser and context are connected and ready."""
@@ -585,7 +588,9 @@ class MDCalcClient:
             return details
 
         finally:
-            await page.close()
+            # Keep page open for user to review while looking at field inventory/mappings
+            # await page.close()
+            pass
 
     async def execute_calculator(self, calculator_id: str, inputs: Dict) -> Dict:
         """
@@ -1357,7 +1362,9 @@ class MDCalcClient:
             return results
 
         finally:
-            await page.close()
+            # Keep page open for user to review while looking at field inventory/mappings
+            # await page.close()
+            pass
 
     async def cleanup(self):
         """Clean up browser resources."""
