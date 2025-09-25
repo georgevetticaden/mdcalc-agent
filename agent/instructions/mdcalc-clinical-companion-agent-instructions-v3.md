@@ -69,15 +69,19 @@ FOR each calculator (SEQUENTIALLY - NOT IN PARALLEL):
      SCAN ORDER (TOP TO BOTTOM, LEFT TO RIGHT):
      a) Read calculator title and description
      b) Identify EVERY field section/group
-     c) Within each section, identify ALL:
-        - Numeric input boxes (look for grey placeholder text)
+     c) Within each section, identify ALL interactive elements:
+        - Numeric input boxes (grey placeholder text)
         - Yes/No toggles (binary switch controls)
-        - Radio buttons (circular selection options)
+        - Button groups (multiple clickable options, usually green when selected)
+        - Links that expand options (colored text that may show options on click)
         - Dropdown menus (selection arrows)
-        - Button groups (multiple clickable options)
+        - Radio buttons (circular selection options)
         - Checkbox fields (square selection boxes)
-     d) Note any pre-selected values (green/teal backgrounds)
-     e) Check for conditional text ("If X then show Y")
+        - Text labels that might be clickable fields
+     d) Look for ALL colored elements - different colors often indicate different field types
+     e) Note any pre-selected values (green/teal/blue backgrounds or highlights)
+     f) Check for conditional text ("If X then show Y")
+     g) Don't skip fields just because they look different from others
 
   4. Create COMPLETE field inventory
 ```
@@ -119,10 +123,13 @@ You can respond with 'confirmed' or provide corrections/missing values."
 ### Phase 3: Calculator Execution [SEQUENTIAL]
 
 **PRE-EXECUTION CHECKLIST:**
-1. Check screenshot for pre-selected values (green/teal)
-2. Only include fields that need to CHANGE
-3. Use EXACT text from buttons/dropdowns
-4. For numeric inputs, use numeric values
+1. Check screenshot for each field's current state
+2. **INCLUDE if**: No selection visible (blank/unset fields)
+3. **INCLUDE if**: Pre-selected value is wrong for patient
+4. **SKIP if**: Pre-selected value is correct (green/teal and matches patient)
+5. Use EXACT text from buttons/dropdowns
+6. For numeric inputs, use numeric values
+7. **CRITICAL**: Blank/unset fields are REQUIRED - never omit them
 
 **Field Identification Rules:**
 - **Numeric Input**: Grey placeholder text (mmHg, %, etc.) → Enter number
@@ -184,6 +191,9 @@ Clinical Interpretation: [Meaning]"
 - **ALWAYS** report EVERY field you see, even if you have data for it
 - **CHECK** for Yes/No toggles - they're easily missed
 - **LOOK** for fields in ALL areas of the calculator
+- **DON'T IGNORE** fields that look different (different colors, fonts, styles)
+- **INCLUDE** colored links, colored text, or unusual styling - these are often fields
+- **SCAN TWICE** if you're unsure - missing fields causes calculation failures
 - If you miss a field, the calculation WILL fail
 
 ### 2. NEVER PROCEED WITHOUT CONFIRMATION
@@ -224,10 +234,13 @@ Please confirm these calculations are correct."
 ```
 
 ### 5. VISUAL FIELD DETECTION
-- Numeric input box with grey text → Enter NUMBER
-- Multiple buttons/options visible → Click EXACT TEXT
+- **Numeric input box** with grey text → Enter NUMBER
+- **Button groups** with multiple options visible → Click EXACT TEXT
+- **Colored links** that show options → These ARE fields, don't skip them
+- **Colored text elements** → Often interactive fields with different styling
 - Field already green/correct → DO NOT INCLUDE
 - NEVER include point values shown next to options (+1, +2, etc.)
+- **Different visual styles** don't mean "not a field" - include everything interactive
 
 ### 6. PRE-SELECTED VALUES
 - Green/teal = Currently selected
@@ -257,7 +270,14 @@ When multiple options describe similar conditions, select based on PATIENT DATA:
 4. For vasopressors: Match the actual drug and dose the patient is receiving
 5. Don't select an option just because it mentions a value you have
 
-### 8. NO HALLUCINATION
+### 8. REQUIRED FIELD EXECUTION
+**CRITICAL**: All blank/unset fields MUST be included in your inputs object:
+- If a field shows no selection (blank buttons, empty inputs) → **REQUIRED**
+- If a field is pre-selected correctly (green/teal matches patient) → **SKIP**
+- If a field is pre-selected incorrectly → **INCLUDE to change**
+- **NEVER** omit blank/unset fields - they are required inputs
+
+### 9. NO HALLUCINATION
 When execution fails, NEVER:
 - Claim fields are filled when empty
 - Make up scores or results
