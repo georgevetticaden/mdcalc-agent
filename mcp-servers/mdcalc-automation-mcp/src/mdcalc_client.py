@@ -82,6 +82,9 @@ class MDCalcClient:
             connects to the existing browser instead of launching a new one.
             This allows using a pre-positioned browser window for demos.
         """
+        # Store headless mode for potential reconnection
+        self.headless_mode = headless
+
         self.playwright = await async_playwright().start()
 
         # Check if we should connect to existing browser (demo mode)
@@ -293,6 +296,31 @@ class MDCalcClient:
         finally:
             await page.close()
 
+    async def ensure_browser_connected(self):
+        """Ensure browser and context are connected and ready."""
+        try:
+            # Check if we have a context at all
+            if not self.context or not self.browser:
+                logger.info("No browser context found, initializing...")
+                await self.initialize(headless=self.headless_mode if hasattr(self, 'headless_mode') else True)
+                return
+
+            # Try to use the context to verify it's still valid
+            try:
+                # This will throw if context is closed
+                _ = self.context.pages
+            except Exception:
+                # Context is invalid, need to reinitialize
+                logger.warning("Browser context lost. Reinitializing...")
+                await self.cleanup()
+                await self.initialize(headless=self.headless_mode if hasattr(self, 'headless_mode') else True)
+
+        except Exception as e:
+            logger.error(f"Error ensuring browser connection: {e}")
+            # Last resort: try to reinitialize
+            await self.cleanup()
+            await self.initialize(headless=self.headless_mode if hasattr(self, 'headless_mode') else True)
+
     async def get_calculator_details(self, calculator_id: str) -> Dict:
         """
         Get calculator screenshot for visual understanding.
@@ -315,6 +343,9 @@ class MDCalcClient:
             - Temporarily hides sticky Results overlay that covers bottom fields
             - Optimized JPEG compression to minimize token usage
         """
+        # Ensure browser is connected before creating new page
+        await self.ensure_browser_connected()
+
         page = await self.context.new_page()
 
         try:
@@ -572,14 +603,20 @@ class MDCalcClient:
         Returns:
             Dict containing:
                 - success (bool): Whether calculation succeeded
-                - score (str): Calculated score
-                - risk (str): Risk category or percentage
-                - interpretation (str): Clinical meaning
+                - score (str): Calculated score (if extracted)
+                - risk (str): Risk category or percentage (if found)
+                - interpretation (str): Clinical meaning (if found)
+                - result_screenshot_base64 (str): JPEG screenshot of entire form with results
+                  Shows all inputs and results with smart zoom to fit everything.
+                  Enables agent to visually see conditional fields and results.
 
         Note:
             Must use EXACT text as shown in calculator buttons.
             Call get_calculator_details first to see available options.
         """
+        # Ensure browser is connected before creating new page
+        await self.ensure_browser_connected()
+
         page = await self.context.new_page()
 
         try:
@@ -1077,101 +1114,10 @@ class MDCalcClient:
             # Wait for results to update (MDCalc takes time to calculate)
             await page.wait_for_timeout(2000)
 
-            # Take a screenshot of the result (for debugging/validation)
+            # Take a screenshot of the result (for agent to see what happened)
+            result_screenshot_base64 = None
             try:
-                # First, hide sticky Results overlay temporarily (same as in get_calculator_details)
-                await page.evaluate('''
-                    () => {
-                        // Hide Results section and any sticky/fixed overlays temporarily
-                        const elements = document.querySelectorAll('[class*="result"], [class*="Result"], [class*="score"], .calc__result');
-                        elements.forEach(el => {
-                            el.setAttribute('data-original-display', el.style.display);
-                            el.style.display = 'none';
-                        });
-
-                        // Hide sticky/fixed elements containing results
-                        document.querySelectorAll('*').forEach(el => {
-                            const style = window.getComputedStyle(el);
-                            if ((style.position === 'sticky' || style.position === 'fixed') &&
-                                (el.textContent || '').match(/Result|Score|point/)) {
-                                el.setAttribute('data-original-display', el.style.display);
-                                el.style.display = 'none';
-                            }
-                        });
-                    }
-                ''')
-
-                # Measure the full calculator height including all inputs and last field
-                measurements = await page.evaluate('''
-                    () => {
-                        const container = document.querySelector('.side-by-side-container, .calc__body');
-                        const calcHeight = container ? container.scrollHeight : 0;
-
-                        // Find the last input/button/field to ensure it's visible
-                        const allFields = container ? container.querySelectorAll('input, select, textarea, [class*="calc_option"], button, div[role="button"]') : [];
-                        let lastFieldBottom = 0;
-                        if (allFields.length > 0) {
-                            // Get the last few fields to find the actual bottom
-                            const lastFields = Array.from(allFields).slice(-5);
-                            lastFields.forEach(field => {
-                                const rect = field.getBoundingClientRect();
-                                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-                                const bottom = rect.bottom + scrollTop;
-                                if (bottom > lastFieldBottom) {
-                                    lastFieldBottom = bottom;
-                                }
-                            });
-                        }
-
-                        return {
-                            calcHeight: calcHeight,
-                            lastFieldBottom: lastFieldBottom,
-                            viewportHeight: window.innerHeight
-                        };
-                    }
-                ''')
-
-                calc_height = measurements['calcHeight']
-                last_field_bottom = measurements['lastFieldBottom']
-                viewport_height = measurements['viewportHeight']
-
-                # Calculate optimal zoom to fit all fields
-                optimal_zoom = 100
-                target_height = last_field_bottom if last_field_bottom > 0 else calc_height
-
-                if target_height > viewport_height:
-                    # Use 90% of viewport to fit the calculator with a small margin
-                    optimal_zoom = int((viewport_height / target_height) * 90)
-                    optimal_zoom = max(50, min(optimal_zoom, 100))  # Clamp between 50-100%
-                    await page.evaluate(f'() => {{ document.body.style.zoom = "{optimal_zoom}%"; }}')
-                    logger.info(f"Zoomed to {optimal_zoom}% to fit calculator inputs (height: {target_height}px)")
-
-                # Scroll to top
-                await page.evaluate('window.scrollTo(0, 0)')
-                await page.wait_for_timeout(500)
-
-                # Take screenshot of the inputs
-                inputs_screenshot = await page.screenshot(
-                    type='jpeg',
-                    quality=85,
-                    full_page=False  # Viewport only
-                )
-
-                # Now restore results and capture them too
-                await page.evaluate('''
-                    () => {
-                        // Restore visibility
-                        document.querySelectorAll('[data-original-display]').forEach(el => {
-                            el.style.display = el.getAttribute('data-original-display') || '';
-                            el.removeAttribute('data-original-display');
-                        });
-                    }
-                ''')
-
-                # Wait for results to render
-                await page.wait_for_timeout(1000)
-
-                # Now measure with results visible to capture both inputs and results
+                # Measure everything including results to capture full view
                 measurements_with_results = await page.evaluate('''
                     () => {
                         // Find all content including inputs AND results
@@ -1213,18 +1159,39 @@ class MDCalcClient:
 
                 result_screenshot = await page.screenshot(
                     type='jpeg',
-                    quality=85,
+                    quality=20,  # Low quality to minimize size for agent
                     full_page=False  # Viewport capture with zoom applied
                 )
+
+                # Convert to base64 for agent to see
+                result_screenshot_base64 = base64.b64encode(result_screenshot).decode('utf-8')
+                logger.info(f"Result screenshot captured: {len(result_screenshot)} bytes ({len(result_screenshot_base64) // 1024}KB base64)")
+
                 # Save to screenshots directory if it exists (for tests)
                 screenshots_dir = Path(__file__).parent.parent / "tests" / "screenshots"
                 if screenshots_dir.exists():
                     result_path = screenshots_dir / f"{calculator_id}_result.jpg"
+                    # Save with higher quality for debugging
+                    debug_screenshot = await page.screenshot(
+                        type='jpeg',
+                        quality=85,
+                        full_page=False
+                    )
                     with open(result_path, 'wb') as f:
-                        f.write(result_screenshot)
+                        f.write(debug_screenshot)
                     logger.info(f"📸 Result screenshot saved to: {result_path}")
             except Exception as e:
                 logger.warning(f"Could not capture result screenshot: {e}")
+                # Even on error, try to capture current state for agent
+                try:
+                    error_screenshot = await page.screenshot(
+                        type='jpeg',
+                        quality=20,
+                        full_page=False
+                    )
+                    result_screenshot_base64 = base64.b64encode(error_screenshot).decode('utf-8')
+                except:
+                    pass
 
             # Extract results - look for result containers and score displays
             results = await page.evaluate('''
@@ -1337,10 +1304,14 @@ class MDCalcClient:
                 }
             ''')
 
+            # Always include the result screenshot so agent can see what happened
+            results['result_screenshot_base64'] = result_screenshot_base64
+
             if results['success']:
                 logger.info(f"✅ Calculation successful: {results.get('score', 'N/A')}")
             else:
                 logger.warning("⚠️ Could not extract results (may be auto-calculated)")
+                logger.info("Screenshot included for agent to visually interpret results")
 
             return results
 
@@ -1351,8 +1322,12 @@ class MDCalcClient:
         """Clean up browser resources."""
         if self.browser:
             await self.browser.close()
+            self.browser = None
+        if self.context:
+            self.context = None
         if self.playwright:
             await self.playwright.stop()
+            self.playwright = None
         logger.info("Browser cleanup complete")
 
 

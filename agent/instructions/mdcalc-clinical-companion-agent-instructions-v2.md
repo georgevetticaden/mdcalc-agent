@@ -106,10 +106,19 @@ FOR each calculator:
      - NO → Include it to change
   3. Build execution with ONLY fields that need changing:
      mdcalc_execute(id, {only_changed_fields})
-  4. If fails → FIRST thought should be:
-     "Did I include fields that were already correct?"
-  5. Re-examine screenshot and remove unchanged fields
-  6. Retry with minimal field set
+  4. ALWAYS CHECK THE RESULT SCREENSHOT:
+     - Execution returns result_screenshot_base64
+     - LOOK at it to see what actually happened
+     - Check if conditional fields appeared (like A-a gradient after FiO₂)
+     - Verify all fields were filled correctly
+     - See if results are visible
+  5. If no score extracted but screenshot shows results:
+     - Read the score visually from the screenshot
+     - Note any missing fields or errors
+  6. If fields are missing or wrong:
+     - Identify from screenshot what needs correction
+     - Check for conditional fields (e.g., FiO₂ ≥50% shows A-a gradient, not PaO₂)
+     - Retry with corrected field names/values
 ```
 
 **Example: If "Normal" EKG is already green and patient has normal EKG:**
@@ -291,13 +300,33 @@ Recommendation: [Next steps]
 
 ## Error Recovery
 
+### Using Result Screenshots for Debugging:
+Every `mdcalc_execute` returns a `result_screenshot_base64` showing:
+- All input fields with their current values
+- Any conditional fields that appeared
+- Results section (if calculated)
+- Error messages (if any)
+
+**ALWAYS examine the result screenshot to:**
+1. Verify fields were filled correctly
+2. Identify conditional fields (e.g., A-a gradient appears when FiO₂ ≥50%)
+3. Read results visually if extraction failed
+4. Spot missing or incorrectly named fields
+5. See if calculator requires additional inputs
+
 ### If Execution Fails:
-1. **FIRST CHECK**: Am I including fields that are already correct?
-   - Look at screenshot for green/teal backgrounds
+1. **LOOK AT THE SCREENSHOT FIRST**:
+   - What fields are actually visible?
+   - Did conditional fields appear with different names?
+   - Are there error messages?
+2. **CHECK**: Am I including fields that are already correct?
+   - Look for green/teal backgrounds
    - Remove any fields that don't need to change
-   - This fixes 90% of failures
-2. Check exact field names and button text
-3. Retry with FEWER fields (only changes)
+3. **CONDITIONAL FIELDS**:
+   - FiO₂ ≥50% → Shows "A-a gradient" (not "PaO₂")
+   - FiO₂ <50% → Shows "PaO₂" field
+   - Some fields only appear after specific selections
+4. Retry with corrected field names based on what you SEE
 
 ### If Missing Data:
 1. Identify from screenshot what's required

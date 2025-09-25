@@ -33,7 +33,11 @@ graph LR
     C --> D[Claude Analyzes Visually]
     D --> E[Map Patient Data]
     E --> F[Execute Calculator]
-    F --> G[Extract Results]
+    F --> G[Return Result Screenshot]
+    G --> H{Success?}
+    H -->|Yes| I[Extract Results]
+    H -->|No| J[Visual Analysis]
+    J --> K[Retry with Corrections]
 ```
 
 ### Real Example: HEART Score Calculation
@@ -50,7 +54,20 @@ graph LR
    - Age 68 → Claude sees "≥65" button → Maps to that option
    - 3 risk factors → Sees "≥3 risk factors" → Maps to that option
 5. **Execution**: Clicks mapped buttons
-6. **Results**: Returns score and risk assessment
+6. **Result Screenshot**: Returns visual confirmation
+7. **Verification**: Claude sees filled fields and calculated score
+
+### Handling Conditional Fields (APACHE II Example)
+
+Some calculators show/hide fields based on selections:
+
+1. **Initial Fields**: Standard inputs like Age, Temperature, pH
+2. **FiO₂ Selection**: User selects "≥50%"
+3. **Conditional Field Appears**: "A-a gradient" field shows (not "PaO₂")
+4. **Result Screenshot Shows Issue**: Missing A-a gradient value
+5. **Visual Correction**: Claude sees the actual field name
+6. **Retry**: Executes with correct field name "A-a gradient"
+7. **Success**: Complete calculation with all fields
 
 ## 🛠 MCP Tools
 
@@ -75,12 +92,14 @@ graph LR
 - Enables Claude's visual analysis
 - No DOM parsing needed
 
-### Automated Execution
+### Automated Execution with Visual Feedback
 **`mdcalc_execute`**
 - Executes calculator with mapped values
 - Handles buttons, dropdowns, inputs
-- Returns structured results
-- Automatic result extraction
+- **Returns result screenshot for verification**
+- Shows all inputs and results visually
+- Enables retry with corrected field names
+- Captures conditional fields that appear
 
 ## 📊 Coverage & Capabilities
 

@@ -240,7 +240,8 @@ class MDCalcMCPServer:
                     '1) First call mdcalc_get_calculator to SEE the calculator visually, '
                     '2) Map patient data to the EXACT button text or input values shown, '
                     '3) Pass the mapped values to this tool. '
-                    'Returns calculation results including score, risk category, and interpretation.'
+                    'Returns calculation results AND a result screenshot showing all inputs and results. '
+                    'ALWAYS examine the result screenshot to verify correct execution and see conditional fields.'
                 ),
                 'inputSchema': {
                     'type': 'object',
@@ -399,20 +400,43 @@ class MDCalcMCPServer:
                     risk_percentage = None
                     risk_category = None
 
+                # Build response content
+                content = []
+
+                # Include the result screenshot if available
+                if result.get('result_screenshot_base64'):
+                    content.append({
+                        'type': 'image',
+                        'data': result['result_screenshot_base64'],
+                        'mimeType': 'image/jpeg'
+                    })
+
+                # Add text results (without the base64 data)
+                text_result = {
+                    'success': result.get('success', False),
+                    'score': score_value,
+                    'score_text': score_text,
+                    'risk_category': risk_category,
+                    'risk_percentage': risk_percentage,
+                    'screenshot_included': bool(result.get('result_screenshot_base64')),
+                    'interpretation': result.get('interpretation'),
+                    'recommendations': result.get('recommendations')
+                }
+
+                # Only include full_result if no screenshot (to avoid duplication)
+                if not result.get('result_screenshot_base64'):
+                    text_result['full_result'] = {
+                        k: v for k, v in result.items()
+                        if k != 'result_screenshot_base64'
+                    }
+
+                content.append({
+                    'type': 'text',
+                    'text': json.dumps(text_result, indent=2)
+                })
+
                 return {
-                    'content': [
-                        {
-                            'type': 'text',
-                            'text': json.dumps({
-                                'success': result.get('success', False),
-                                'score': score_value,
-                                'score_text': score_text,
-                                'risk_category': risk_category,
-                                'risk_percentage': risk_percentage,
-                                'full_result': result
-                            }, indent=2)
-                        }
-                    ]
+                    'content': content
                 }
 
             else:

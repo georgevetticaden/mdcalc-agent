@@ -58,7 +58,14 @@ The system uses Claude's vision capabilities to "see" and understand calculators
 2. **Visual Analysis**: Claude identifies all fields, buttons, and options visually
 3. **Intelligent Mapping**: Claude maps patient data to exact button text
 4. **Automated Execution**: System clicks the appropriate buttons/fields
-5. **Result Synthesis**: Claude combines outputs into clinical recommendations
+5. **Result Screenshot**: Returns visual confirmation of all inputs and results
+6. **Visual Verification**: Claude examines result screenshot to:
+   - Confirm all fields were filled correctly
+   - Identify conditional fields that appeared (e.g., A-a gradient when FiO₂ ≥50%)
+   - Read results even if extraction fails
+   - Spot missing fields for retry
+7. **Intelligent Retry**: If needed, Claude corrects field names based on visual feedback
+8. **Result Synthesis**: Claude combines outputs into clinical recommendations
 
 ### Intelligent Clinical Pathways
 
