@@ -4,9 +4,15 @@
 
 <div align="center">
 
+  <!-- If you have a GIF preview, uncomment and add path below -->
+  <!-- ![Demo Preview](docs/images/demo-preview.gif) -->
+
   [![MDCalc Clinical Companion Demo](https://img.youtube.com/vi/5VJj2sPhlQU/maxresdefault.jpg)](https://www.youtube.com/watch?v=5VJj2sPhlQU)
 
   **[▶️ Watch Full Demo on YouTube](https://www.youtube.com/watch?v=5VJj2sPhlQU)** (3 min)
+
+  <!-- After enabling GitHub Pages, uncomment the line below -->
+  <!-- **[🎬 Watch Demo with Embedded Player](https://gvetticaden.github.io/mdcalc-agent/)** -->
 
   *Click the image above to see how MDCalc Clinical Companion transforms complex clinical assessments through natural conversation*
 
