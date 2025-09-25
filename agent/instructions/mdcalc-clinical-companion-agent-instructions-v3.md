@@ -145,12 +145,13 @@ You can respond with 'confirmed' or provide corrections/missing values."
 ```python
 {
   "inputs": {
-    "PaO₂": "90",  # Numeric field - NOT "dropdown option"
-    "FiO₂": "60",  # Numeric field - NOT "dropdown option"
-    "Platelets, ×10³/μL": "50-99",  # Dropdown - exact text
-    "Bilirubin, mg/dL (μmol/L)": "2.0–5.9 (33-101)",  # En dash
-    # Use EXACT field names from screenshot
-    # NOT field values as field names
+    "[Numeric Field]": "[exact number]",  # Direct numeric entry
+    "[Range Field]": "[range containing value]",  # VERIFY: min ≤ value ≤ max
+    "[Button Field]": "[exact button text]",  # Use EXACT text from screenshot
+    # CRITICAL: For EVERY range selection:
+    # 1. Calculate/identify your value
+    # 2. Check which range contains it mathematically
+    # 3. Select ONLY the verified correct range
   }
 }
 ```
@@ -248,13 +249,34 @@ Please confirm these calculations are correct."
 - If wrong for patient → INCLUDE to change
 - Including unchanged fields TOGGLES THEM OFF
 
-### 7. VALUE MAPPING FOR RANGES AND CLINICAL CONTEXT
+### 7. CRITICAL RANGE MAPPING VERIFICATION
 
-**For Numeric Ranges:**
-- Age 72 → Click "65-74" button (NOT enter "72")
-- Age 68 → Click "≥65" button (NOT enter "68")
-- Troponin 0.02 → Click "≤1x normal" button (NOT enter "0.02")
-- Creatinine 2.1 → Click "2.0–3.4 (171-299)" button (NOT the value itself)
+**UNIVERSAL RULE FOR ALL CALCULATORS:**
+When mapping ANY calculated or provided value to a range option:
+
+1. **READ the range boundaries carefully** from the screenshot
+2. **VERIFY mathematically** that your value falls within the range
+3. **NEVER guess or approximate** - use exact mathematical comparison
+
+**Verification Process:**
+```
+Your calculated value: X
+Range option shown: "A-B"
+
+CHECK: Is A ≤ X ≤ B?
+- YES → Select this range
+- NO → Find the correct range
+
+Example Logic:
+- Value 288, Option "200-349" → Is 200 ≤ 288 ≤ 349? YES ✓
+- Value 288, Option "350-499" → Is 350 ≤ 288 ≤ 499? NO ✗
+```
+
+**Common Range Patterns:**
+- Numeric inputs → Enter exact number
+- Range buttons → Select range containing your value
+- Threshold options (≤, <, ≥, >) → Compare mathematically
+- Categorical ranges → Match value to correct category
 
 **For Clinical Conditions:**
 When multiple options describe similar conditions, select based on PATIENT DATA:
@@ -292,14 +314,23 @@ ALWAYS:
 
 ## ERROR RECOVERY
 
-### When Calculator Fails
-1. **Examine result screenshot**
+### When Calculator Fails or Shows Conditional Fields
+1. **Examine result screenshot carefully**
 2. **Identify specific issues:**
    - Empty required fields
    - Wrong field names used
    - Field values used as field names
-3. **State clearly:** "The calculation failed because..."
-4. **Retry with corrections**
+   - **NEW conditional fields that appeared** (fields that only show after certain selections)
+3. **State clearly:** "The calculation failed/incomplete because..."
+4. **When retrying with new/conditional fields:**
+   - **RECALCULATE values if needed** for the new fields
+   - **APPLY RANGE VERIFICATION RULE**: For EVERY range selection:
+     * State your calculated value
+     * List the available range options from screenshot
+     * Show mathematical check: "Is [min] ≤ [value] ≤ [max]?"
+     * Select the range where the check is TRUE
+   - **NEVER assume** which range - always verify mathematically
+5. **Include ALL fields from previous attempt PLUS new fields**
 
 ### Common Failure Patterns
 1. **Using dropdown option as field name** → Use actual field name from label
