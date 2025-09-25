@@ -2,9 +2,15 @@
 
 ## 🎥 See It In Action
 
-[![MDCalc Clinical Companion Demo](https://img.youtube.com/vi/5VJj2sPhlQU/maxresdefault.jpg)](https://www.youtube.com/watch?v=5VJj2sPhlQU)
+<div align="center">
 
-*Watch the full demo showing how MDCalc Clinical Companion transforms complex clinical assessments through natural conversation*
+  [![MDCalc Clinical Companion Demo](https://img.youtube.com/vi/5VJj2sPhlQU/maxresdefault.jpg)](https://www.youtube.com/watch?v=5VJj2sPhlQU)
+
+  **[▶️ Watch Full Demo on YouTube](https://www.youtube.com/watch?v=5VJj2sPhlQU)** (3 min)
+
+  *Click the image above to see how MDCalc Clinical Companion transforms complex clinical assessments through natural conversation*
+
+</div>
 
 ## 🏗️ Architecture: Visual Intelligence at Scale
 
@@ -128,11 +134,13 @@ claude.map_patient_data_to_fields(patient, fields)
 - Claude API access (Claude 3.5 Sonnet)
 - Chrome/Chromium browser
 
+📘 **[Detailed Setup Guide](SETUP.md)** - Step-by-step installation instructions
+
 ### Installation
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/mdcalc-agent.git
+git clone https://github.com/gvetticaden/mdcalc-agent.git
 cd mdcalc-agent
 
 # Install dependencies
@@ -241,9 +249,8 @@ MIT License - See [LICENSE](LICENSE) for details
 
 ## 📞 Contact
 
-- **Project Lead**: [Your Name]
-- **Email**: [your.email@example.com]
-- **GitHub Issues**: [Report bugs or request features](https://github.com/yourusername/mdcalc-agent/issues)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/gvetticaden/mdcalc-agent/issues)
+- **Project Discussion**: Use GitHub Discussions for questions and ideas
 
 ---
 

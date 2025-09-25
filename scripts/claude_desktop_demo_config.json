@@ -1,12 +1,13 @@
 {
   "mcpServers": {
     "mdcalc-automation-demo": {
-      "command": "/Users/aju/Dropbox/Development/Git/09-22-25-mdcalc-agent-v2/mdcalc-agent/venv/bin/python",
+      "comment": "Update paths below to match your local setup",
+      "command": "python",
       "args": [
-        "/Users/aju/Dropbox/Development/Git/09-22-25-mdcalc-agent-v2/mdcalc-agent/mcp-servers/mdcalc-automation-mcp/src/mdcalc_mcp.py"
+        "[PATH_TO_REPO]/mcp-servers/mdcalc-automation-mcp/src/mdcalc_mcp.py"
       ],
       "env": {
-        "PYTHONPATH": "/Users/aju/Dropbox/Development/Git/09-22-25-mdcalc-agent-v2/mdcalc-agent",
+        "PYTHONPATH": "[PATH_TO_REPO]",
         "MDCALC_HEADLESS": "false",
         "MDCALC_DEMO_MODE": "true"
       }
