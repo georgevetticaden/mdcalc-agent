@@ -917,38 +917,66 @@ class MDCalcClient:
                 # If not filled, try button clicking
                 if not filled:
                     button_text = str(value)
+                    logger.info(f"  🔍 Starting button click for field '{field_name}'")
+                    logger.info(f"  🔍 Original value: '{button_text}'")
+
+                    # Store original for comparison
+                    original_text = button_text
 
                     # Convert hyphens to en dashes for decimal ranges (MDCalc pattern)
                     # Pattern: decimal ranges use en dashes (2.0–5.9), integer ranges use hyphens (50-99)
                     # Match decimal number, hyphen, decimal number (e.g., 2.0-5.9, 1.2-1.9)
                     decimal_pattern = r'(\d+\.\d+)-(\d+\.\d+)'
+
+                    # Check if pattern matches
+                    match = re.search(decimal_pattern, button_text)
+                    logger.info(f"  🔍 Checking for decimal pattern match: {bool(match)}")
+                    if match:
+                        logger.info(f"  🔍 Found decimal range: '{match.group()}'")
+
                     # Replace hyphen with en dash (U+2013) only for decimal ranges
                     button_text = re.sub(decimal_pattern, r'\1–\2', button_text)
-                    logger.debug(f"  Converted button text: {button_text}")
+
+                    # Log character codes for debugging
+                    if '–' in button_text:
+                        logger.info(f"  🔍 En dash found in converted text at position {button_text.index('–')}")
+                    if '-' in original_text:
+                        logger.info(f"  🔍 Hyphen found in original text at position {original_text.index('-')}")
+
+                    if button_text != original_text:
+                        logger.info(f"  ✅ Converted '{original_text}' to '{button_text}'")
+                        # Log character codes for the dash
+                        for i, (o_char, c_char) in enumerate(zip(original_text, button_text)):
+                            if o_char != c_char:
+                                logger.info(f"  🔍 Char diff at position {i}: '{o_char}' (code {ord(o_char)}) → '{c_char}' (code {ord(c_char)})")
+                    else:
+                        logger.info(f"  🔍 No conversion needed for '{button_text}'")
 
                     clicked = False
 
                     # Strategy 1: Direct button text
                     try:
+                        logger.info(f"  🔄 Strategy 1: Looking for button with text '{button_text}'")
                         button_selector = f"button:has-text('{button_text}')"
                         count = await page.locator(button_selector).count()
-                        logger.debug(f"  Strategy 1: Found {count} buttons with text '{button_text}'")
+                        logger.info(f"  🔄 Strategy 1: Found {count} buttons with text '{button_text}'")
                         if count > 0:
                             await page.click(button_selector)
                             clicked = True
-                            logger.info(f"  ✅ Clicked button: {button_text}")
+                            logger.info(f"  ✅ Strategy 1: Successfully clicked button: {button_text}")
                     except Exception as e:
-                        logger.debug(f"  Strategy 1 failed: {e}")
+                        logger.info(f"  ❌ Strategy 1 failed: {e}")
 
                     # Strategy 2: Any clickable div with exact text (MDCalc uses divs for buttons)
                     if not clicked:
                         try:
+                            logger.info(f"  🔄 Strategy 2: Looking for div with exact text '{button_text}'")
                             # MDCalc uses divs as buttons, not actual button elements
                             # Use text= for exact match, find the innermost element
                             option_selector = f"div:text-is('{button_text}')"  # Exact text match
                             elements = page.locator(option_selector)
                             count = await elements.count()
-                            logger.debug(f"  Strategy 2: Found {count} divs with exact text '{button_text}'")
+                            logger.info(f"  🔄 Strategy 2: Found {count} divs with exact text '{button_text}'")
 
                             # If there's only one element, click it (no ambiguity)
                             if count == 1:
@@ -977,21 +1005,23 @@ class MDCalcClient:
 
                                 if element_state:
                                     clicked = True
-                                    logger.info(f"  ✅ Option already selected: {button_text}")
+                                    logger.info(f"  ✅ Strategy 2: Option already selected: {button_text}")
                                 else:
                                     await element.click()
                                     clicked = True
-                                    logger.info(f"  ✅ Clicked option: {button_text}")
+                                    logger.info(f"  ✅ Strategy 2: Successfully clicked option: {button_text}")
                             elif count > 1:
                                 # Multiple elements found - skip to Strategy 3 for context-aware clicking
-                                logger.debug(f"  Multiple elements found, need context-aware selection")
+                                logger.info(f"  ⚠️ Strategy 2: Multiple elements ({count}) found, need context-aware selection")
+                            else:
+                                logger.info(f"  ⚠️ Strategy 2: No elements found")
                         except Exception as e:
-                            logger.debug(f"  Strategy 2 failed: {e}")
+                            logger.info(f"  ❌ Strategy 2 failed: {e}")
 
                     # Strategy 3: Context-aware search - find button near the field label
                     if not clicked:
                         # The field_name should be the exact label seen in the UI
-                        logger.info(f"  Looking for {button_text} button near field '{field_name}'")
+                        logger.info(f"  🔄 Strategy 3: Looking for '{button_text}' button near field '{field_name}'")
 
                         try:
                             # For complex text with special characters, escape them for CSS selectors
@@ -1005,7 +1035,7 @@ class MDCalcClient:
                                 button_locator = page.locator(f"button:has-text('{button_text}'), div:has-text('{button_text}')")
                                 all_buttons = await button_locator.element_handles()
 
-                            logger.debug(f"  Strategy 3: Found {len(all_buttons)} elements with text '{button_text}'")
+                            logger.info(f"  🔄 Strategy 3: Found {len(all_buttons)} elements with text '{button_text}'")
 
                             for button in all_buttons:
                                 # Check if this button is near the field label
@@ -1042,18 +1072,19 @@ class MDCalcClient:
 
                                     if button_state:
                                         clicked = True
-                                        logger.info(f"  ✅ {button_text} already selected for field '{field_name}'")
+                                        logger.info(f"  ✅ Strategy 3: Button already selected for field '{field_name}': {button_text}")
                                     else:
                                         await button.click()
                                         clicked = True
-                                        logger.info(f"  ✅ Clicked {button_text} for field '{field_name}'")
+                                        logger.info(f"  ✅ Strategy 3: Successfully clicked {button_text} for field '{field_name}'")
                                     break
 
                         except Exception as e:
-                            logger.debug(f"  Strategy 3 failed: {e}")
+                            logger.info(f"  ❌ Strategy 3 failed: {e}")
 
                     # Strategy 4: Use JavaScript to find and click the button
                     if not clicked:
+                        logger.info(f"  🔄 Strategy 4: Using JavaScript to find '{button_text}' near '{field_name}'")
                         try:
                             clicked = await page.evaluate('''({fieldName, buttonText}) => {
                                 console.log('Strategy 4: Looking for', buttonText, 'in field', fieldName);
@@ -1106,9 +1137,11 @@ class MDCalcClient:
                             }''', {'fieldName': field_name, 'buttonText': button_text})
 
                             if clicked:
-                                logger.info(f"  ✅ Clicked option via JavaScript: {button_text}")
+                                logger.info(f"  ✅ Strategy 4: Successfully clicked option via JavaScript: {button_text}")
+                            else:
+                                logger.info(f"  ❌ Strategy 4: JavaScript could not find matching button")
                         except Exception as e:
-                            logger.debug(f"  Strategy 4 (JavaScript click) failed: {e}")
+                            logger.info(f"  ❌ Strategy 4 (JavaScript click) failed: {e}")
 
                     if not clicked:
                         logger.warning(f"  ⚠️ Could not click option for {field_name}: {button_text}")
