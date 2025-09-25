@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import logging
 import base64
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -552,10 +553,10 @@ class MDCalcClient:
                 await page.evaluate('window.scrollTo(0, 0)')
                 await page.wait_for_timeout(500)
 
-                # Take screenshot (low quality JPEG to minimize size)
+                # Take screenshot (balanced quality for readability vs size)
                 screenshot_bytes = await page.screenshot(
                     type='jpeg',
-                    quality=20,
+                    quality=60,  # Consistent quality for all screenshots
                     full_page=False  # Viewport only
                 )
 
@@ -916,6 +917,15 @@ class MDCalcClient:
                 # If not filled, try button clicking
                 if not filled:
                     button_text = str(value)
+
+                    # Convert hyphens to en dashes for decimal ranges (MDCalc pattern)
+                    # Pattern: decimal ranges use en dashes (2.0–5.9), integer ranges use hyphens (50-99)
+                    # Match decimal number, hyphen, decimal number (e.g., 2.0-5.9, 1.2-1.9)
+                    decimal_pattern = r'(\d+\.\d+)-(\d+\.\d+)'
+                    # Replace hyphen with en dash (U+2013) only for decimal ranges
+                    button_text = re.sub(decimal_pattern, r'\1–\2', button_text)
+                    logger.debug(f"  Converted button text: {button_text}")
+
                     clicked = False
 
                     # Strategy 1: Direct button text
@@ -1145,21 +1155,25 @@ class MDCalcClient:
                 content_height = measurements_with_results['contentHeight']
                 viewport_height = measurements_with_results['viewportHeight']
 
-                # Calculate zoom to fit everything including results
+                # Calculate zoom but prioritize readability
+                # Don't zoom out too much - better to have partial view that's readable
                 if content_height > viewport_height:
-                    optimal_zoom = int((viewport_height / content_height) * 85)  # 85% to leave margin
-                    optimal_zoom = max(40, min(optimal_zoom, 100))  # Allow more zoom out (40-100%)
+                    optimal_zoom = int((viewport_height / content_height) * 90)  # 90% to leave margin
+                    # Keep minimum 60% zoom for readability (was 40%)
+                    optimal_zoom = max(60, min(optimal_zoom, 100))
                     await page.evaluate(f'() => {{ document.body.style.zoom = "{optimal_zoom}%"; }}')
-                    logger.info(f"Zoomed result view to {optimal_zoom}% to fit all content (height: {content_height}px)")
+                    logger.info(f"Zoomed result view to {optimal_zoom}% to fit content (height: {content_height}px)")
                     await page.wait_for_timeout(500)  # Wait for zoom to apply
 
                 # Scroll to top to capture from beginning
                 await page.evaluate('window.scrollTo(0, 0)')
                 await page.wait_for_timeout(300)
 
+                # Take a single screenshot that serves both purposes
+                # Use quality that's good for both agent viewing and test debugging
                 result_screenshot = await page.screenshot(
                     type='jpeg',
-                    quality=20,  # Low quality to minimize size for agent
+                    quality=60,  # Balance between agent needs (50%) and test needs (85%)
                     full_page=False  # Viewport capture with zoom applied
                 )
 
@@ -1167,18 +1181,12 @@ class MDCalcClient:
                 result_screenshot_base64 = base64.b64encode(result_screenshot).decode('utf-8')
                 logger.info(f"Result screenshot captured: {len(result_screenshot)} bytes ({len(result_screenshot_base64) // 1024}KB base64)")
 
-                # Save to screenshots directory if it exists (for tests)
+                # Save the SAME screenshot to test directory if it exists
                 screenshots_dir = Path(__file__).parent.parent / "tests" / "screenshots"
                 if screenshots_dir.exists():
                     result_path = screenshots_dir / f"{calculator_id}_result.jpg"
-                    # Save with higher quality for debugging
-                    debug_screenshot = await page.screenshot(
-                        type='jpeg',
-                        quality=85,
-                        full_page=False
-                    )
                     with open(result_path, 'wb') as f:
-                        f.write(debug_screenshot)
+                        f.write(result_screenshot)  # Save the exact same screenshot
                     logger.info(f"📸 Result screenshot saved to: {result_path}")
             except Exception as e:
                 logger.warning(f"Could not capture result screenshot: {e}")
@@ -1186,7 +1194,7 @@ class MDCalcClient:
                 try:
                     error_screenshot = await page.screenshot(
                         type='jpeg',
-                        quality=20,
+                        quality=60,  # Consistent quality even for error screenshots
                         full_page=False
                     )
                     result_screenshot_base64 = base64.b64encode(error_screenshot).decode('utf-8')

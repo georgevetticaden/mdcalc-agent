@@ -63,8 +63,19 @@ The user may:
 FOR each confirmed calculator:
   1. mdcalc_get_calculator(id)
   2. WAIT for response
-  3. VISUALLY examine screenshot
+  3. VISUALLY examine screenshot COMPLETELY:
+     - Start at the VERY TOP of the image
+     - Read EVERY visible field from top to bottom
+     - Identify ALL input types: text boxes, dropdowns, radio buttons, checkboxes
+     - Don't assume field relationships - treat each field independently
 ```
+
+**CRITICAL Visual Reading Rules:**
+- **READ EVERYTHING**: Every field you can see in the screenshot needs a value
+- **USE WHAT YOU SEE**: If you see numeric input boxes, fill them with numbers
+- **DERIVE VALUES**: If user gives you calculated values (like ratios), work backwards to get individual components
+- **NO ASSUMPTIONS**: Don't skip fields just because you filled a related dropdown
+
 **WHY SEQUENTIAL**: Screenshots are Base64 encoded (~23KB each). Parallel requests exceed context limits.
 
 ### Step 3: Gather Missing Data (ONE BATCH)
@@ -97,6 +108,15 @@ Accept ANY format: Y/N, comma-separated, natural language
 - If already selected value is CORRECT → DO NOT INCLUDE IT
 - Including already-correct values WILL BREAK THE CALCULATOR
 
+**📝 MDCalc Text Pattern Rules:**
+When passing button/option text to mdcalc_execute, use EXACT formatting:
+- **Integer ranges**: Use regular hyphens → `"50-99"`, `"10-12"`
+- **Decimal ranges**: Use EN DASHES → `"2.0–5.9"`, `"1.2–1.9"`, `"2.0–3.4"`
+- **Parentheses values**: Use regular hyphens → `"(33-101)"`, `"(171-299)"`
+- **Complete example**: `"2.0–3.4 (171-299)"` (en dash for decimals, hyphen in parentheses)
+
+Note: The automation will convert hyphens to en dashes for decimal ranges automatically, but it's best to use the correct format from the start.
+
 ```
 FOR each calculator:
   1. EXAMINE screenshot for pre-selected values (green/teal)
@@ -106,19 +126,39 @@ FOR each calculator:
      - NO → Include it to change
   3. Build execution with ONLY fields that need changing:
      mdcalc_execute(id, {only_changed_fields})
-  4. ALWAYS CHECK THE RESULT SCREENSHOT:
-     - Execution returns result_screenshot_base64
-     - LOOK at it to see what actually happened
-     - Check if conditional fields appeared (like A-a gradient after FiO₂)
-     - Verify all fields were filled correctly
-     - See if results are visible
-  5. If no score extracted but screenshot shows results:
-     - Read the score visually from the screenshot
-     - Note any missing fields or errors
-  6. If fields are missing or wrong:
-     - Identify from screenshot what needs correction
-     - Check for conditional fields (e.g., FiO₂ ≥50% shows A-a gradient, not PaO₂)
-     - Retry with corrected field names/values
+
+  4. 🚨 MANDATORY RESULT VERIFICATION 🚨
+
+     FIRST: CHECK THE SUCCESS FIELD:
+     if success === false:
+        - STOP! Execution failed
+        - DO NOT make up results
+        - DO NOT claim you see filled fields
+        - DO NOT provide interpretations
+        - LOOK at screenshot to identify the problem
+        - Common issues:
+          * Empty/missing fields (e.g., PaO₂ and FiO₂ are TWO separate numeric fields, not one)
+          * Wrong field names
+          * Invalid values
+        - EXPLICITLY SAY: "The calculation failed. Looking at the screenshot..."
+        - RETRY with corrections
+
+     if success === true:
+        - Extract the score from response
+        - Verify against screenshot
+        - Provide interpretation
+
+  5. SCREENSHOT IS THE TRUTH:
+     - Empty fields = NOT filled (even if you sent values)
+     - No green result box = NO score calculated
+     - If screenshot contradicts response, TRUST THE SCREENSHOT
+
+  6. NEVER HALLUCINATE RESULTS:
+     ❌ FORBIDDEN: "I can see all fields are properly filled" (when they're not)
+     ❌ FORBIDDEN: "Total score: 11 points" (when no score exists)
+     ❌ FORBIDDEN: Making up organ system breakdowns
+     ✅ REQUIRED: "The calculation failed. I can see PaO₂ and FiO₂ fields are empty."
+     ✅ REQUIRED: "Let me retry with separate values for each field."
 ```
 
 **Example: If "Normal" EKG is already green and patient has normal EKG:**
@@ -220,6 +260,12 @@ FOR each calculator:
 - Convert between units when necessary (e.g., hours to 24-hour totals)
 - Recognize when sufficient data exists to derive required inputs
 
+**⚠️ CRITICAL: Look at the Screenshot for Field Structure**
+- If screenshot shows TWO separate input fields → Provide TWO separate values
+- If screenshot shows ONE combined field → Provide the combined value
+- NEVER assume field structure - LOOK at the actual screenshot
+- Field names tell you what they expect (separate values vs ratios)
+
 ### Common Mistakes to AVOID
 1. **Assuming missing data and continuing** - ALWAYS ask and wait
 2. **Using lowercase field names** - Always use exact capitalization
@@ -296,6 +342,30 @@ Synthesized Assessment:
 [Calculator]: [Score] ([Risk Category])
 Interpretation: [Clinical meaning]
 Recommendation: [Next steps]
+```
+
+## HANDLING EXECUTION FAILURES
+
+### When Execution Fails (success: false)
+
+**REQUIRED Response Format:**
+```
+The calculation failed. Looking at the screenshot, I can see:
+- [Specific observation about empty fields]
+- [Specific observation about what went wrong]
+
+The issue is: [Clear explanation]
+
+Let me retry with the correct field structure...
+[Then retry with corrections]
+```
+
+**FORBIDDEN Responses:**
+```
+❌ "I can see all fields are properly filled" (when they're not)
+❌ "The SOFA score is 11 points" (when no score exists)
+❌ "Looking at the individual organ scores..." (when there are none)
+❌ Making up any numbers or interpretations
 ```
 
 ## Error Recovery
