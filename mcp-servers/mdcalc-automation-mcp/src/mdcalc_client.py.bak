@@ -657,14 +657,7 @@ class MDCalcClient:
                 if is_numeric_value:
                     logger.info(f"  Value '{value}' is numeric, trying input fields first")
 
-                    # ====================================================================================
-                    # STRATEGY 0: Playwright Native Methods (THE PRIMARY SOLUTION)
-                    # This is the main working approach for numeric inputs in React forms.
-                    # MDCalc follows a consistent pattern where the HTML 'name' attribute
-                    # is the lowercase version of the field label.
-                    # Example: "Age" → name="age", "Serum Sodium" → name="serumsodium"
-                    # We use Playwright's type() method with delays to properly trigger React validation.
-                    # ====================================================================================
+                    # NEW Strategy 0: Try Playwright's native type method with exact field names
                     field_name_lower = field_name.lower().replace(' ', '')
                     selectors = [
                         f'input[name="{field_name_lower}"]',  # Exact name attribute
@@ -696,13 +689,6 @@ class MDCalcClient:
                         await asyncio.sleep(0.5)  # Give React time to update
                         continue
 
-                    # ====================================================================================
-                    # FALLBACK STRATEGIES: JavaScript-based field filling
-                    # These strategies run if Playwright native methods fail.
-                    # They use complex label-to-input association logic to find the right field.
-                    # While these didn't solve the React validation issue for Creatinine Clearance,
-                    # they remain useful fallbacks for other calculator patterns.
-                    # ====================================================================================
                     # Strategy 1: Find the CORRECT input field by better field-to-input association
                     try:
                         # Look for the field label and find associated input
@@ -745,6 +731,7 @@ class MDCalcClient:
                                        el.tagName !== 'STYLE';
                             });
 
+                            console.log('Found', labels.length, 'potential labels for', fieldName);
 
                             // Sort labels by specificity and position
                             labels.sort((a, b) => {
@@ -772,7 +759,9 @@ class MDCalcClient:
                                     const inputId = label.getAttribute('for');
                                     const input = document.getElementById(inputId);
                                     if (input) {
+                                        console.log('Found input by for attribute:', inputId);
                                         // Fill and return
+                                        console.log('Found input by for attribute:', inputId);
 
                                         // Simulate real user typing
                                         input.focus();
@@ -796,6 +785,7 @@ class MDCalcClient:
                                         input.blur();
                                         input.dispatchEvent(new Event('blur', { bubbles: true }))
 
+                                        console.log('Filled', input.name || 'input', 'with', value);
                                         return true;
                                     }
                                 }
@@ -810,8 +800,10 @@ class MDCalcClient:
                                         (nextSibling.type === 'text' || nextSibling.type === 'number' || !nextSibling.type)) {
                                         const rect = nextSibling.getBoundingClientRect();
                                         if (rect.width > 0 && rect.height > 0 && !nextSibling.disabled && !nextSibling.readOnly) {
+                                            console.log('Found adjacent input for', fieldName);
                                             // Check if this input is already filled
                                             if (nextSibling.value && nextSibling.value !== '' && nextSibling.value !== value) {
+                                                console.log('Input already has value:', nextSibling.value, 'skipping...');
                                                 break;
                                             }
                                             // Simulate real user typing
@@ -836,6 +828,7 @@ class MDCalcClient:
                                             nextSibling.blur();
                                             nextSibling.dispatchEvent(new Event('blur', { bubbles: true }));
 
+                                            console.log('Filled', nextSibling.name || 'input', 'with', value);
                                             return true;
                                         }
                                     }
@@ -846,8 +839,10 @@ class MDCalcClient:
                                         if (rect.width > 0 && rect.height > 0 && !inputInSibling.disabled && !inputInSibling.readOnly) {
                                             // Check if already filled
                                             if (inputInSibling.value && inputInSibling.value !== '' && inputInSibling.value !== value) {
+                                                console.log('Input already has value:', inputInSibling.value, 'skipping...');
                                                 break;
                                             }
+                                            console.log('Found input in sibling for', fieldName);
 
                                             // Simulate real user typing
                                             inputInSibling.focus();
@@ -871,6 +866,7 @@ class MDCalcClient:
                                             inputInSibling.blur();
                                             inputInSibling.dispatchEvent(new Event('blur', { bubbles: true }));
 
+                                            console.log('Filled', inputInSibling.name || 'input', 'with', value);
                                             return true;
                                         }
                                     }
@@ -905,6 +901,8 @@ class MDCalcClient:
 
                                     // Only fill if the closest input is reasonably close (within 200px)
                                     if (closest && closest.distance < 300) {
+                                        console.log('Found closest unfilled input for', fieldName, 'distance:', closest.distance);
+                                        console.log('Input details - placeholder:', closest.placeholder, 'current value:', closest.value);
 
                                         const input = closest.element;
                                         // Simulate real user typing
@@ -929,11 +927,13 @@ class MDCalcClient:
                                         input.blur();
                                         input.dispatchEvent(new Event('blur', { bubbles: true }));
 
+                                        console.log('Successfully filled', fieldName, 'with', value);
                                         return true;
                                     }
                                 }
                             }
 
+                            console.log('No input field found for:', fieldName);
                             return false;
                         }''', {'fieldName': field_name, 'value': str(value)})
 
@@ -1092,8 +1092,7 @@ class MDCalcClient:
                                         maxLevels--;
                                     }
 
-                                    // PRE-SELECTION DETECTION: Check background colors (for calculators that use color styling)
-                                    // MDCalc uses teal (rgb(26, 188, 156)) for selected state
+                                    // Strategy 2: Check background colors (for calculators that use color styling)
                                     const style = window.getComputedStyle(el);
                                     const bgColor = style.backgroundColor;
                                     const parentBg = el.parentElement ?
@@ -1218,6 +1217,7 @@ class MDCalcClient:
                         logger.info(f"  🔄 Strategy 4: Using JavaScript to find '{button_text}' near '{field_name}'")
                         try:
                             clicked = await page.evaluate('''({fieldName, buttonText}) => {
+                                console.log('Strategy 4: Looking for', buttonText, 'in field', fieldName);
 
                                 // Find all clickable elements (buttons and divs that act as buttons)
                                 const allClickables = Array.from(document.querySelectorAll('button, div[role="button"], div[class*="option"], div[class*="button"], div[onclick]'));
@@ -1244,6 +1244,7 @@ class MDCalcClient:
                                         }
 
                                         if (foundNearField) {
+                                            console.log('Found button near field, clicking:', elementText);
 
                                             // Check if not already selected (both class and color)
                                             // Check 1: CSS classes
@@ -1268,6 +1269,7 @@ class MDCalcClient:
                                             const isSelected = hasSelectedClass || hasTealBg;
 
                                             if (isSelected) {
+                                                console.log('Button already selected (skipping)');
                                                 return true;
                                             }
 
@@ -1277,6 +1279,7 @@ class MDCalcClient:
                                     }
                                 }
 
+                                console.log('No matching button found');
                                 return false;
                             }''', {'fieldName': field_name, 'buttonText': button_text})
 

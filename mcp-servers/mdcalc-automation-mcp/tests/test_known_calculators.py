@@ -232,7 +232,7 @@ class KnownCalculatorTests:
             print("\nExecuting with test data from demo scenario...")
             test_inputs = {
                 'Age': '68',  # Numeric input field
-                'Temperature': '38.5',  # Numeric input (Norm: 97-100)
+                'Temperature': '100',  # Numeric input (Norm: 97-100)
                 'Mean arterial pressure': '65',  # Numeric input (Norm: 70-100)
                 'pH': '7.32',  # Numeric input (Norm: 7.38-7.44)
                 'Heart rate/pulse': '115',  # Numeric input (Norm: 60-100)
