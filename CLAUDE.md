@@ -1,1016 +1,742 @@
-# CLAUDE.md - MDCalc Clinical Companion Implementation Guide
+# CLAUDE.md - MDCalc Clinical Companion: Remote MCP Server Deployment
 
 ## Workspace Context
 You are working in: `/Users/aju/Dropbox/Development/Git/09-22-25-mdcalc-agent-v2/mdcalc-agent`
 
-The directory structure has already been created with all necessary folders as shown in `requirements/mdcalc-project-structure.md`.
+**Current Branch**: `feature/remote-mcp-server-deployment`
 
-## Related Documentation
-Before starting implementation, review these documents in the `requirements/` directory:
-- `mdcalc-agent-requirements.md` - Core requirements and capabilities
-- `mdcalc-agent-instructions.md` - Agent system prompt with orchestration logic
-- `mdcalc-project-structure.md` - Complete directory layout and component mapping
-- `mdcalc-playwright-mcp.md` - MCP server design specification
-- `mdcalc-demo-scenarios.md` - Demo scripts and expected outputs
-- `mdcalc-implementation-roadmap.md` - Phased development approach
+**Git Repository**: https://github.com/georgevetticaden/mdcalc-agent
 
-## Existing Infrastructure
+## Project Overview
 
-### Health MCP Server (Already Configured)
-- **Location**: `/Users/aju/Dropbox/Development/Git/multi-agent-health-insight-system-using-claude-code/tools/health-mcp`
-- **Config Name**: `health-analysis-server` (already in claude_desktop_config.json)
-- **Status**: Already working - no changes needed
+This project transforms the MDCalc Clinical Companion from a **local MCP server** (running on Claude Desktop) to a **remote MCP server** (deployed on Google Cloud Run) accessible via **Claude Android** using voice commands.
 
-Your existing claude_desktop_config.json configuration:
+### Architecture Transformation
+
+**Before (Local Deployment):**
+```
+Claude Desktop (macOS) → Local MCP Server → MDCalc Automation
+                          (stdio transport)
+```
+
+**After (Remote Deployment):**
+```
+Claude Android → Remote MCP Server (Cloud Run) → MDCalc Automation
+                 (HTTP + OAuth 2.1 + JSON-RPC 2.0)
+```
+
+---
+
+## Critical Documentation Structure
+
+### Core Requirements Documentation (KEEP THESE)
+
+**Original Agent Design:**
+- `requirements/mdcalc-agent-requirements.md` - Core capabilities and features
+- `requirements/mdcalc-agent-instructions.md` - Agent orchestration logic (**UNCHANGED**)
+- `requirements/mdcalc-project-structure.md` - Directory layout
+- `requirements/mdcalc-playwright-mcp.md` - Original MCP design
+- `requirements/mdcalc-demo-scenarios.md` - Demo scripts and test cases
+
+**Authentication & Remote Deployment (NEW):**
+- **`requirements/auth-requirements/REMOTE_MCP_DESIGN_SPEC.md`** - **PRIMARY IMPLEMENTATION GUIDE**
+- `requirements/auth-requirements/mcp-auth-research.md` - Authentication research
+
+---
+
+## What Stays the Same
+
+### 1. Agent Intelligence (UNCHANGED)
+
+The agent instructions in `requirements/mdcalc-agent-instructions.md` remain completely valid:
+- **Smart Agent, Dumb Tools** architecture
+- Automated data population logic
+- Clinical interpretation and synthesis
+- Multi-calculator orchestration
+
+**Key Principle**: Claude handles ALL intelligence—data mapping, interpretation, and orchestration. Tools remain purely mechanical.
+
+### 2. MDCalc Client Logic (MOSTLY UNCHANGED)
+
+Your existing `mcp-servers/mdcalc-automation-mcp/src/mdcalc_client.py`:
+- Playwright automation
+- Calculator catalog (825 calculators)
+- Screenshot-based universal support (23KB JPEGs)
+- Search and execution logic
+
+**Only the transport layer changes**—not the business logic.
+
+### 3. Health MCP Server (UNCHANGED)
+
+The existing health-analysis-server configuration remains operational:
 ```json
 "health-analysis-server": {
   "command": "/Users/aju/.local/bin/uv",
-  "args": [
-    "--directory",
-    "/Users/aju/Dropbox/Development/Git/multi-agent-health-insight-system-using-claude-code/tools/health-mcp",
-    "run",
-    "src/health_mcp.py"
-  ],
-  "env": {
-    "SNOWFLAKE_USER": "georgevetticaden",
-    "SNOWFLAKE_ACCOUNT": "UZEUKZN-EEA12595",
-    "SNOWFLAKE_PRIVATE_KEY_PATH": "~/.ssh/snowflake/snowflake_key.p8",
-    "SNOWFLAKE_WAREHOUSE": "COMPUTE_WH",
-    "SNOWFLAKE_DATABASE": "HEALTH_INTELLIGENCE",
-    "SNOWFLAKE_SCHEMA": "HEALTH_RECORDS",
-    "SNOWFLAKE_ROLE": "ACCOUNTADMIN",
-    "SNOWFLAKE_SEMANTIC_MODEL_FILE": "health_intelligence_semantic_model.yaml"
+  "args": ["--directory", "...", "run", "src/health_mcp.py"],
+  "env": { "SNOWFLAKE_USER": "...", ... }
+}
+```
+
+This continues to work locally and is independent of the remote MCP server.
+
+---
+
+## What Changes
+
+### 1. MCP Server Architecture
+
+#### Old Architecture (stdio):
+```python
+# mdcalc_mcp.py
+async def main():
+    while True:
+        line = sys.stdin.readline()  # Read from stdin
+        request = json.loads(line)
+        response = await handle_request(request)
+        sys.stdout.write(json.dumps(response) + '\n')  # Write to stdout
+```
+
+#### New Architecture (HTTP + OAuth):
+```python
+# server.py
+@app.post("/sse")
+async def mcp_endpoint(request: Request, token: Dict = Depends(verify_token)):
+    body = await request.json()  # JSON-RPC 2.0 format
+    
+    # Extract JSON-RPC fields
+    request_id = body.get("id")
+    method = body.get("method")
+    params = body.get("params", {})
+    
+    # Route to handler
+    if method == "initialize":
+        result = handle_initialize()
+    elif method == "tools/list":
+        result = handle_tools_list(token_scopes)
+    elif method == "tools/call":
+        result = await handle_tools_call(params, token_scopes)
+    
+    # Return JSON-RPC response
+    return JSONResponse({
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "result": result
+    })
+```
+
+### 2. Authentication Layer (NEW)
+
+**Components:**
+- **Auth0**: External OAuth provider with Dynamic Client Registration (DCR)
+- **Token Validation**: JWT verification using JWKS from Auth0
+- **Scope-based Authorization**: Tools require specific scopes
+
+**Critical New Files:**
+- `mcp-servers/mdcalc-automation-mcp/src/auth.py` - Token validation
+- `mcp-servers/mdcalc-automation-mcp/src/config.py` - Configuration management
+- `mcp-servers/mdcalc-automation-mcp/src/server.py` - FastAPI server with OAuth
+
+### 3. Deployment Infrastructure (NEW)
+
+**Components:**
+- **Dockerfile**: Containerizes the MCP server
+- **Google Cloud Run**: Serverless hosting with auto-scaling
+- **Environment Variables**: Auth0 credentials and MCP server URL
+
+---
+
+## Implementation Guide
+
+**PRIMARY REFERENCE**: `requirements/auth-requirements/REMOTE_MCP_DESIGN_SPEC.md`
+
+This document provides complete step-by-step instructions for:
+
+### Phase 1: Auth0 Setup (15 minutes)
+1. Create Auth0 account and tenant
+2. **Enable Dynamic Client Registration** (CRITICAL for Claude Android)
+3. Create API with scopes
+4. Test DCR endpoint
+5. Save credentials
+
+### Phase 2: MCP Server Implementation
+
+**New File Structure:**
+```
+mcp-servers/mdcalc-automation-mcp/
+├── src/
+│   ├── server.py       # NEW: FastAPI server with OAuth
+│   ├── auth.py         # NEW: Token validation
+│   ├── config.py       # NEW: Configuration
+│   └── mdcalc_client.py # EXISTING: Your automation logic
+├── Dockerfile          # NEW: Container definition
+├── requirements.txt    # UPDATED: Add FastAPI, Auth0 deps
+└── .dockerignore       # NEW: Exclude unnecessary files
+```
+
+**Key Implementation Requirements:**
+
+#### 1. JSON-RPC 2.0 Format (Required by MCP spec)
+```python
+# Request format
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/list",
+  "params": {}
+}
+
+# Response format
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {"tools": [...]}
+}
+
+# Error format
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32601,
+    "message": "Method not found"
   }
 }
 ```
 
-## Implementation Phases
-
-### Phase 0: Recording-Based Discovery ✅ COMPLETED
-**Goal**: Use Playwright's recording feature to understand MDCalc's structure and extract reliable selectors.
-
-#### Step 1: Create Recording Infrastructure ✅
-
-**Status**: Complete - Created enhanced recording scripts with authentication support
-
-**Key Files Created**:
-- `tools/recording-generator/record_interaction.py` - Main recording script with scenario instructions
-- `tools/recording-generator/manual_login.py` - Manual authentication handler (saves session state)
-- `tools/recording-generator/parse_recording.py` - HAR file parser for selector extraction
-
-**Authentication Solution**: MDCalc requires login for full functionality. We implemented manual login with session persistence:
+#### 2. OAuth Metadata Endpoint (Required by RFC 9728)
 ```python
-# Manual login saves state for reuse
-context.storage_state(path=str(state_file))
-```
-
-#### Step 2: Authentication Handling ✅
-
-**Status**: Complete - Successfully created authenticated session
-
-**Process**:
-1. Run `python tools/recording-generator/manual_login.py`
-2. User manually logs in
-3. Session state saved to `auth/mdcalc_auth_state.json`
-4. All subsequent recordings use saved authentication
-
-#### Step 3: Record Key Interactions ✅
-
-**Status**: Complete - All 5 priority calculators recorded with authentication
-
-**Completed Recordings**:
-```bash
-✅ search_20250922_165617.har - Search functionality
-✅ heart_score_20250922_165753.har - HEART Score calculator
-✅ cha2ds2_vasc_20250922_165902.har - CHA2DS2-VASc calculator
-✅ sofa_20250922_170021.har - SOFA Score calculator
-✅ navigation_20250922_170134.har - Navigation patterns
-```
-
-**Extracted API Endpoints**:
-From the recordings, we identified key API patterns:
-- Search: `/api/v1/search`
-- Calculator data: `/_next/data/v31RjrqCKjVPEaYrmeA9r/calc/{id}/{slug}.json`
-- Calculate: `/api/v1/calc/{id}/calculate`
-
-#### Step 4: Extract and Validate Selectors ✅
-
-**Status**: Complete - Selectors extracted and config deployed
-
-**Completed Actions**:
-- Parsed HAR files and extracted API patterns
-- Generated comprehensive DOM selector patterns
-- Identified calculator IDs (heart_score: 1752, cha2ds2_vasc: 10583, sofa: 691)
-- Created `mcp-servers/mdcalc-automation-mcp/src/mdcalc_config.json`
-- Added recordings/ to .gitignore for security
-
-### Phase 1: Foundation Setup
-**Goal**: Establish environment and verify existing infrastructure works.
-
-#### Step 1: Environment Setup
-```bash
-# Verify you're in the correct directory
-pwd  # Should show: /Users/aju/Dropbox/Development/Git/09-22-25-mdcalc-agent-v2/mdcalc-agent
-
-# Create Python virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-playwright install chromium
-```
-
-#### Step 2: Test Health MCP Connection
-
-**File**: `scripts/test_health_mcp.py`
-```python
-#!/usr/bin/env python3
-"""
-Test that the health-analysis-server MCP is accessible.
-This verifies we can query Snowflake health data.
-"""
-
-import json
-
-def test_health_mcp():
-    # This would normally go through Claude Desktop
-    # For testing, we verify the MCP server starts
-    print("Testing health MCP connection...")
-    print("✓ Health MCP server is configured in Claude Desktop")
-    print("✓ Snowflake credentials are set")
-    print("✓ Ready to query health data")
-
-if __name__ == "__main__":
-    test_health_mcp()
-```
-
-### Phase 2: Core MDCalc Automation Development
-**Goal**: Build the MDCalc Playwright MCP server with atomic tools.
-
-#### 🆕 Architecture Decision: Screenshot-Based Universal Calculator Support
-
-**Problem Discovered During Testing**:
-- Field detection returns 0 fields for complex calculators (NIH Stroke, CHA2DS2-VASc)
-- React-based button interfaces use dynamic rendering not captured by DOM queries
-- Special characters (≤, ≥) in button text break selector matching
-- Each calculator has unique patterns - impractical to handle all 900+ programmatically
-
-**Solution**: Use Claude's vision capabilities to understand calculator structure from screenshots.
-
-```python
-# Implementation Plan:
-def get_calculator_details(calc_id):
-    # 1. Navigate to calculator
-    # 2. Take screenshot of form area
-    # 3. Return screenshot + basic metadata
+@app.get("/.well-known/oauth-protected-resource")
+async def oauth_metadata():
     return {
-        "title": "HEART Score for Chest Pain",
-        "url": "https://www.mdcalc.com/calc/1752/heart-score",
-        "screenshot_base64": "...",  # ~50KB JPEG
-        "fields": []  # Let Claude figure it out visually
+        "resource": settings.MCP_SERVER_URL,
+        "authorization_servers": [f"https://{settings.AUTH0_DOMAIN}"],
+        "bearer_methods_supported": ["header"],
+        "scopes_supported": ["mdcalc:calculate", "mdcalc:search", "mdcalc:read"]
     }
-
-# Claude's Process:
-# 1. SEES the calculator screenshot
-# 2. READS all field labels and button options visually
-# 3. UNDERSTANDS the structure without needing selectors
-# 4. MAPS patient data to visible fields
-# 5. TELLS the tool exactly what to click/enter
 ```
 
-**Why This Works**:
-- Claude can see ALL fields, even dynamically rendered ones
-- Handles any UI pattern or framework (React, Vue, vanilla JS)
-- Works for all 900+ calculators without special cases
-- Robust against UI updates and changes
-
-#### Step 1: Create MDCalc Client
-
-**File**: `mcp-servers/mdcalc-automation-mcp/src/mdcalc_client.py`
+#### 3. Initialize Method (Required by MCP spec)
 ```python
-import asyncio
-from playwright.async_api import async_playwright
-import json
-import os
-from pathlib import Path
-from typing import Dict, List, Optional
-
-class MDCalcClient:
-    """
-    Playwright client for MDCalc automation.
-    Uses selectors extracted from recordings.
-    """
-    
-    def __init__(self):
-        self.base_url = "https://www.mdcalc.com"
-        self.playwright = None
-        self.browser = None
-        self.context = None
-        self.selectors = self.load_selectors()
-        
-    def load_selectors(self):
-        """Load selectors from production config."""
-        # Load from the config file in the same directory as this script
-        config_path = Path(__file__).parent / "mdcalc_config.json"
-
-        with open(config_path, 'r') as f:
-            config = json.load(f)
-
-        # Return the selectors section of the config
-        return config['selectors']
-        
-    async def initialize(self, headless=True):
-        """Initialize Playwright browser."""
-        self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(
-            headless=headless,
-            args=[
-                '--disable-blink-features=AutomationControlled',
-                '--disable-dev-shm-usage',
-                '--no-sandbox'
-            ]
-        )
-        self.context = await self.browser.new_context(
-            viewport={'width': 1920, 'height': 1080},
-            user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120.0.0.0 Safari/537.36'
-        )
-        
-    async def search_calculators(self, query: str, limit: int = 10) -> List[Dict]:
-        """Search for calculators by condition or name."""
-        page = await self.context.new_page()
-        
-        try:
-            # Navigate to search
-            search_url = f"{self.base_url}/search?q={query}"
-            await page.goto(search_url, wait_until='networkidle')
-            
-            # Wait for results to load
-            await page.wait_for_selector(self.selectors["calculator_card"], timeout=5000)
-            
-            # Extract calculator results
-            calculator_selector = self.selectors['search']['result_card']
-            calculators = await page.evaluate(f'''
-                () => {{
-                    const cards = document.querySelectorAll('{calculator_selector}');
-                    return Array.from(cards).slice(0, {limit}).map(card => ({{
-                        title: card.querySelector('h3, .title, h2')?.textContent?.trim(),
-                        url: card.querySelector('a')?.href,
-                        description: card.querySelector('.description, .excerpt, p')?.textContent?.trim(),
-                        id: card.querySelector('a')?.href?.match(/calc\\/([\\d\\w-]+)/)?.[1]
-                    }}));
-                }}
-            ''')
-            
-            return calculators
-            
-        finally:
-            await page.close()
-            
-    async def get_calculator_details(self, calculator_id: str) -> Dict:
-        """Get input requirements for a calculator."""
-        page = await self.context.new_page()
-        
-        try:
-            # Navigate to calculator
-            url = f"{self.base_url}/calc/{calculator_id}"
-            await page.goto(url, wait_until='networkidle')
-            
-            # Extract calculator metadata and inputs
-            details = await page.evaluate('''
-                () => {
-                    const title = document.querySelector('h1')?.textContent?.trim();
-                    const description = document.querySelector('.calc-description, .lead')?.textContent?.trim();
-                    
-                    const inputs = [];
-                    document.querySelectorAll('input, select, [role="radio"], [role="checkbox"]').forEach(element => {
-                        if (element.name || element.id) {
-                            const label = element.closest('label')?.textContent || 
-                                        document.querySelector(`label[for="${element.id}"]`)?.textContent;
-                            inputs.push({
-                                name: element.name || element.id,
-                                label: label?.trim(),
-                                type: element.type || 'select',
-                                required: element.required
-                            });
-                        }
-                    });
-                    
-                    return {
-                        title,
-                        description,
-                        inputs
-                    };
-                }
-            ''')
-            
-            return details
-            
-        finally:
-            await page.close()
-            
-    async def execute_calculator(self, calculator_id: str, inputs: Dict) -> Dict:
-        """Execute calculator with provided inputs."""
-        page = await self.context.new_page()
-        
-        try:
-            # Navigate to calculator
-            url = f"{self.base_url}/calc/{calculator_id}"
-            await page.goto(url, wait_until='networkidle')
-            
-            # Populate inputs
-            for field_name, value in inputs.items():
-                # Try multiple selector strategies
-                selectors = [
-                    f'input[name="{field_name}"]',
-                    f'select[name="{field_name}"]',
-                    f'#{field_name}',
-                    f'[data-field="{field_name}"]',
-                    f'input[id*="{field_name}"]'
-                ]
-                
-                for selector in selectors:
-                    try:
-                        element = await page.wait_for_selector(selector, timeout=1000)
-                        
-                        element_type = await element.get_attribute('type')
-                        if element_type == 'radio':
-                            await page.click(f'{selector}[value="{value}"]')
-                        elif element_type == 'checkbox':
-                            if value:
-                                await element.check()
-                        else:
-                            await element.fill(str(value))
-                        break
-                    except:
-                        continue
-                        
-            # Trigger calculation
-            calculate_selector = self.selectors['calculator']['calculate_button']
-            await page.click(calculate_selector)
-            
-            # Wait for results
-            result_selector = self.selectors['results']['result_container']
-            await page.wait_for_selector(result_selector, timeout=5000)
-            
-            # Extract results
-            results = await page.evaluate('''
-                () => {
-                    const score = document.querySelector('.score, .primary-result, .result-value')?.textContent?.trim();
-                    const risk = document.querySelector('.risk-level, .interpretation, .risk-category')?.textContent?.trim();
-                    const details = document.querySelector('.result-details, .explanation')?.textContent?.trim();
-                    
-                    const recommendations = Array.from(
-                        document.querySelectorAll('.recommendation li, .next-steps li')
-                    ).map(li => li.textContent?.trim());
-                    
-                    return {
-                        score,
-                        risk_category: risk,
-                        interpretation: details,
-                        recommendations: recommendations.length > 0 ? recommendations : null
-                    };
-                }
-            ''')
-            
-            return results
-            
-        finally:
-            await page.close()
-    
-    async def cleanup(self):
-        """Clean up browser resources."""
-        if self.browser:
-            await self.browser.close()
-        if self.playwright:
-            await self.playwright.stop()
+def handle_initialize() -> Dict:
+    return {
+        "protocolVersion": "2024-11-05",
+        "capabilities": {"tools": {}},
+        "serverInfo": {"name": "mdcalc-mcp-server", "version": "1.0.0"}
+    }
 ```
 
-#### Step 2: Create MCP Server
-
-**File**: `mcp-servers/mdcalc-automation-mcp/src/mdcalc_mcp.py`
+#### 4. CORS Preflight (Required for Claude.ai)
 ```python
-#!/usr/bin/env python3
+@app.options("/sse")
+async def sse_options():
+    return Response(headers={
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    })
+```
 
-import asyncio
-import json
-import sys
-import os
-from typing import Dict, List, Any
+### Phase 3: Google Cloud Run Deployment
+
+**Prerequisites:**
+- Google Cloud project: `mdcalc-474013` (already configured)
+- gcloud CLI installed and initialized
+- Billing enabled
+
+**Deployment Command:**
+```bash
+cd mcp-servers/mdcalc-automation-mcp
+
+gcloud run deploy mdcalc-mcp-server \
+  --source . \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --memory 1Gi \
+  --timeout 300 \
+  --set-env-vars="AUTH0_DOMAIN=YOUR-TENANT.auth0.com" \
+  --set-env-vars="AUTH0_API_AUDIENCE=https://mdcalc-mcp-server" \
+  --set-env-vars="AUTH0_ISSUER=https://YOUR-TENANT.auth0.com/"
+```
+
+**Why `--allow-unauthenticated`?**
+- OAuth handles authentication, not Google Cloud IAM
+- The MCP server validates tokens, not Cloud Run
+- This allows Claude Android to reach the endpoint
+
+### Phase 4: Claude.ai Configuration
+
+**Steps:**
+1. Go to https://claude.ai → Settings → Connectors
+2. Add custom connector with Cloud Run URL
+3. **Leave "Advanced Settings" empty** (Claude discovers Auth0 automatically)
+4. Complete OAuth flow when prompted
+5. Configuration syncs to Claude Android automatically
+
+**OAuth Flow:**
+```
+1. Claude fetches /.well-known/oauth-protected-resource
+2. Discovers Auth0 authorization server
+3. Uses Dynamic Client Registration with Auth0
+4. Redirects user to Auth0 login
+5. User grants consent (sees requested scopes)
+6. Auth0 issues access token
+7. Claude stores token and uses it for all MCP requests
+```
+
+### Phase 5: Testing with Claude Android
+
+**Voice Commands to Test:**
+```
+"Search MDCalc for Wells criteria"
+
+"Calculate Wells score for pulmonary embolism with 
+recent surgery, leg swelling, heart rate 110"
+
+"What calculators are available for heart failure?"
+
+"I have a 72-year-old patient with atrial fibrillation. 
+Calculate their stroke risk."
+```
+
+**Monitor Logs:**
+```bash
+gcloud run services logs tail mdcalc-mcp-server --region us-central1
+```
+
+---
+
+## Integration with Existing Logic
+
+### Wrapping Your MDCalc Client
+
+**In `server.py`, update `handle_tools_call`:**
+
+```python
 from mdcalc_client import MDCalcClient
 
-class MDCalcMCP:
-    """
-    MCP server for MDCalc automation.
-    Provides atomic tools - Claude handles orchestration.
-    """
+# Initialize client (reuse your existing code)
+mdcalc_client = MDCalcClient()
+
+async def handle_tools_call(params: Dict, scopes: list) -> Dict:
+    tool_name = params.get("name")
+    arguments = params.get("arguments", {})
     
-    def __init__(self):
-        self.client = None
+    if tool_name == "mdcalc_list_all":
+        if "mdcalc:read" not in scopes:
+            raise HTTPException(status_code=403)
         
-    async def initialize(self):
-        """Initialize MDCalc client."""
-        self.client = MDCalcClient()
-        await self.client.initialize(headless=True)
-        
-    async def handle_request(self, request: Dict) -> Dict:
-        """Handle incoming MCP requests."""
-        method = request.get('method')
-        params = request.get('params', {})
-        
-        if method == 'tools/list':
-            return self.list_tools()
-            
-        elif method == 'tools/call':
-            tool_name = params.get('name')
-            tool_params = params.get('arguments', {})
-            
-            try:
-                if tool_name == 'search_calculators':
-                    results = await self.client.search_calculators(
-                        query=tool_params.get('query'),
-                        limit=tool_params.get('limit', 10)
-                    )
-                    return {'result': results}
-                    
-                elif tool_name == 'get_calculator_details':
-                    details = await self.client.get_calculator_details(
-                        calculator_id=tool_params.get('calculator_id')
-                    )
-                    return {'result': details}
-                    
-                elif tool_name == 'execute_calculator':
-                    result = await self.client.execute_calculator(
-                        calculator_id=tool_params.get('calculator_id'),
-                        inputs=tool_params.get('inputs')
-                    )
-                    return {'result': result}
-                    
-                else:
-                    return {'error': f'Unknown tool: {tool_name}'}
-                    
-            except Exception as e:
-                return {'error': str(e)}
-                
-        return {'error': 'Unknown method'}
-        
-    def list_tools(self) -> Dict:
-        """Return available tools - atomic operations only."""
+        # Use your catalog
+        calculators = await mdcalc_client.list_all_calculators()
         return {
-            'tools': [
-                {
-                    'name': 'search_calculators',
-                    'description': 'Search MDCalc for relevant medical calculators',
-                    'parameters': {
-                        'type': 'object',
-                        'properties': {
-                            'query': {
-                                'type': 'string',
-                                'description': 'Search term (condition, symptom, calculator name)'
-                            },
-                            'limit': {
-                                'type': 'integer',
-                                'description': 'Maximum results to return',
-                                'default': 10
-                            }
-                        },
-                        'required': ['query']
-                    }
-                },
-                {
-                    'name': 'get_calculator_details',
-                    'description': 'Get input requirements for a specific calculator',
-                    'parameters': {
-                        'type': 'object',
-                        'properties': {
-                            'calculator_id': {
-                                'type': 'string',
-                                'description': 'MDCalc calculator ID or slug'
-                            }
-                        },
-                        'required': ['calculator_id']
-                    }
-                },
-                {
-                    'name': 'execute_calculator',
-                    'description': 'Execute a single MDCalc calculator with inputs',
-                    'parameters': {
-                        'type': 'object',
-                        'properties': {
-                            'calculator_id': {
-                                'type': 'string',
-                                'description': 'MDCalc calculator ID or slug'
-                            },
-                            'inputs': {
-                                'type': 'object',
-                                'description': 'Input values for the calculator'
-                            }
-                        },
-                        'required': ['calculator_id', 'inputs']
-                    }
-                }
-            ]
+            "content": [{
+                "type": "text",
+                "text": f"Found {len(calculators)} calculators"
+            }]
         }
-
-async def main():
-    """Main entry point for MCP server."""
-    server = MDCalcMCP()
-    await server.initialize()
     
-    # Read from stdin and write to stdout (MCP protocol)
-    while True:
-        try:
-            line = sys.stdin.readline()
-            if not line:
-                break
-                
-            request = json.loads(line)
-            response = await server.handle_request(request)
-            
-            sys.stdout.write(json.dumps(response) + '\n')
-            sys.stdout.flush()
-            
-        except Exception as e:
-            error_response = {'error': str(e)}
-            sys.stdout.write(json.dumps(error_response) + '\n')
-            sys.stdout.flush()
-
-if __name__ == '__main__':
-    asyncio.run(main())
-```
-
-#### Step 3: Add to Claude Desktop Configuration
-
-Add this to your `claude_desktop_config.json`:
-```json
-{
-  "mcpServers": {
-    "health-analysis-server": {
-      // ... existing config (keep as is) ...
-    },
-    "mdcalc-automation": {
-      "command": "python",
-      "args": [
-        "/Users/aju/Dropbox/Development/Git/09-22-25-mdcalc-agent-v2/mdcalc-agent/mcp-servers/mdcalc-automation-mcp/src/mdcalc_mcp.py"
-      ],
-      "env": {
-        "PYTHONPATH": "/Users/aju/Dropbox/Development/Git/09-22-25-mdcalc-agent-v2/mdcalc-agent"
-      }
-    }
-  }
-}
-```
-
-### Phase 3: Agent Configuration & Enhancement
-**Goal**: Configure Claude to handle orchestration, synthesis, and ALL intelligent data mapping.
-
-#### Critical Architecture Principle 🔑
-
-**Smart Agent, Dumb Tools**: This is the fundamental design principle:
-- **Claude (Agent)**: Handles ALL intelligence, interpretation, and mapping
-- **MCP Tools**: Purely mechanical executors with ZERO intelligence
-
-#### Step 1: Create Agent Instructions
-
-**File**: `agent/instructions/mdcalc-clinical-companion-agent-instructions.md`
-Copy the content from `requirements/mdcalc-agent-instructions.md` which contains:
-- Complete orchestration logic
-- **Automated Data Population section** with detailed mapping examples
-- Clinical interpretation guidelines
-- Synthesis algorithms
-
-#### Data Population Responsibilities
-
-**Claude's Responsibilities (ALL Intelligence)**:
-1. **Clinical Interpretation**:
-   - "Patient has heart problems" → CHF: true
-   - "BP 145/90" → Hypertension: true
-   - "Creatinine 1.2" → Normal kidney function
-
-2. **Value Conversion**:
-   - Age 68 → "65-74" (select correct range)
-   - "Female" → sex: "female" (normalize format)
-   - Lab value 0.02 → "normal" (interpret threshold)
-
-3. **Risk Factor Counting**:
-   - Review diagnoses and count: HTN + DM + smoking = 3 risk factors
-   - Identify vascular disease from history
-   - Determine presence/absence of conditions
-
-4. **Missing Data Handling**:
-   - Query health database for missing values
-   - Ask user for unavailable data
-   - Use clinical defaults when appropriate
-
-**MCP Tool's Responsibilities (ZERO Intelligence)**:
-1. Return raw calculator structure (field names, types)
-2. Fill form fields with Claude's provided values
-3. Click calculate button
-4. Extract and return results
-
-**Example Flow**:
-```
-User: "Calculate CHA2DS2-VASc for my AFib patient"
-
-Claude's Process:
-1. get_calculator_details("cha2ds2-vasc")
-   Tool returns: {fields: ["age", "sex", "chf", ...]}
-
-2. Query health data
-   Get: {age: 68, sex: "F", diagnoses: ["CHF", "HTN"], ...}
-
-3. Claude performs ALL mapping:
-   - 68 years → age: "65-74" ✓ (Claude selects range)
-   - "F" → sex: "female" ✓ (Claude normalizes)
-   - "CHF" in diagnoses → chf: true ✓ (Claude interprets)
-   - "HTN" in diagnoses → hypertension: true ✓ (Claude identifies)
-   - No "CVA" in history → stroke: false ✓ (Claude determines)
-
-4. execute_calculator("cha2ds2-vasc", claude_mapped_values)
-   Tool mechanically fills form and returns result
-```
-
-#### Step 2: Define Clinical Pathways
-
-**File**: `agent/knowledge/clinical-pathways.json`
-```json
-{
-  "pathways": {
-    "chest_pain": {
-      "calculators": ["heart-score", "timi-risk-score", "grace-acs", "perc-rule"],
-      "description": "Comprehensive cardiac risk assessment"
-    },
-    "afib": {
-      "calculators": ["cha2ds2-vasc", "has-bled", "atria-bleeding"],
-      "description": "Anticoagulation risk-benefit analysis"
-    },
-    "sepsis": {
-      "calculators": ["sofa", "qsofa", "apache-ii", "news2"],
-      "description": "Multi-organ dysfunction assessment"
-    },
-    "pneumonia": {
-      "calculators": ["curb-65", "psi-port", "smart-cop"],
-      "description": "Severity and disposition decision"
-    }
-  }
-}
-```
-
-#### Step 3: Test Data Population Flow
-
-**Critical**: Test that Claude correctly maps health data to calculator inputs.
-
-Example test conversation:
-```
-User: "Calculate CHA2DS2-VASc for my patient"
-
-Expected Claude behavior:
-1. Call get_calculator_details("cha2ds2-vasc")
-2. Receive raw field requirements
-3. Query health data for relevant information
-4. Map intelligently (YOU do this, not the tool):
-   - Age 68 → "65-74" range
-   - Female → sex: "female"
-   - EF 38% → chf: true
-   - BP 145/90 → hypertension: true
-5. Call execute_calculator with YOUR mapped values
-```
-
-### Phase 4: Testing & Validation
-**Goal**: Ensure all components work together, especially the data mapping.
-
-#### 🆕 Simplified Testing Strategy
-
-**Key Decision**: Tests should verify mechanics work, NOT try to handle "any calculator". That's Claude's job!
-
-**Test Approach**:
-1. **Mechanical Tests** (`test_mdcalc_client.py`)
-   - Test with 5-10 known calculators
-   - Use hardcoded inputs for predictable calculators
-   - Verify search, navigation, execution mechanics
-
-2. **Integration Tests** (`test_known_calculators.py`)
-   - Focus on calculators we understand well:
-     - HEART Score (ID: 1752) - button-based
-     - LDL Calculated (ID: 70) - numeric inputs
-     - CHA2DS2-VASc (ID: 801) - mixed inputs
-   - Use specific test data for each
-
-3. **End-to-End Test** (with Claude Desktop)
-   - This is where "any calculator" support is proven
-   - Claude uses vision to understand new calculators
-   - No special programming needed
-
-#### Step 1: Test Individual Components
-
-**File**: `scripts/test_mdcalc_integration.py`
-```python
-import asyncio
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
-from mcp_servers.mdcalc_automation_mcp.src.mdcalc_client import MDCalcClient
-
-async def test_mdcalc_integration():
-    """Test MDCalc automation components."""
-    client = MDCalcClient()
-    await client.initialize(headless=False)  # Watch it work
-    
-    print("Testing search...")
-    results = await client.search_calculators("chest pain")
-    print(f"Found {len(results)} calculators")
-    
-    if results:
-        print(f"First result: {results[0]['title']}")
-    
-    print("\nTesting get_calculator_details...")
-    details = await client.get_calculator_details('heart-score')
-    print(f"HEART Score needs these inputs:")
-    for input_field in details.get('inputs', []):
-        print(f"  - {input_field['name']}: {input_field['type']}")
-        if 'options' in input_field:
-            print(f"    Options: {[opt['value'] for opt in input_field['options']]}")
-    
-    print("\nTesting HEART Score execution...")
-    # Note: These are Claude's PRE-MAPPED values
-    # Claude has already done the intelligent mapping
-    heart_result = await client.execute_calculator(
-        calculator_id='heart-score',
-        inputs={
-            'age': 65,  # Claude provided exact age
-            'history': 'moderately_suspicious',  # Claude interpreted symptoms
-            'ecg': 'normal',  # Claude mapped from EKG data
-            'risk_factors': 3,  # Claude counted HTN, DM, smoking
-            'troponin': 'normal'  # Claude interpreted lab value
+    elif tool_name == "mdcalc_search":
+        if "mdcalc:search" not in scopes:
+            raise HTTPException(status_code=403)
+        
+        query = arguments.get("query")
+        results = await mdcalc_client.search_calculators(query=query, limit=10)
+        
+        results_text = "\n".join([
+            f"- {r['title']}: {r['description']}"
+            for r in results
+        ])
+        
+        return {
+            "content": [{
+                "type": "text",
+                "text": f"Found {len(results)} calculators:\n{results_text}"
+            }]
         }
-    )
-    print(f"Result: {heart_result}")
     
-    await client.cleanup()
-    print("\nTest complete!")
-
-if __name__ == "__main__":
-    asyncio.run(test_mdcalc_integration())
+    elif tool_name == "mdcalc_get_calculator":
+        if "mdcalc:read" not in scopes:
+            raise HTTPException(status_code=403)
+        
+        calculator_id = arguments.get("calculator_id")
+        details = await mdcalc_client.get_calculator_details(calculator_id)
+        
+        return {
+            "content": [{
+                "type": "text",
+                "text": f"Calculator: {details['title']}\nURL: {details['url']}"
+            }, {
+                "type": "image",
+                "data": details['screenshot_base64'],
+                "mimeType": "image/jpeg"
+            }]
+        }
+    
+    elif tool_name == "mdcalc_execute":
+        if "mdcalc:calculate" not in scopes:
+            raise HTTPException(status_code=403)
+        
+        calculator_id = arguments.get("calculator_id")
+        inputs = arguments.get("inputs")
+        
+        result = await mdcalc_client.execute_calculator(
+            calculator_id=calculator_id,
+            inputs=inputs
+        )
+        
+        return {
+            "content": [{
+                "type": "text",
+                "text": f"Score: {result['score']}\n"
+                       f"Risk: {result['risk_category']}\n"
+                       f"Interpretation: {result['interpretation']}"
+            }]
+        }
 ```
 
-#### Step 2: Test Data Population Flow
+### Screenshot-Based Approach on Cloud Run
 
-**File**: `scripts/test_data_population_flow.py`
+Your screenshot-based universal calculator support **works on Cloud Run**:
+
 ```python
-"""
-Test showing the division of responsibilities:
-- MCP tool gets raw requirements (no intelligence)
-- Claude does ALL mapping (intelligence)
-- MCP tool executes with mapped values (mechanical)
-"""
-
-async def test_data_population_flow():
-    client = MDCalcClient()
-    await client.initialize()
+async def handle_get_calculator(calculator_id: str) -> Dict:
+    """Get calculator details with screenshot"""
     
-    # STEP 1: Tool returns raw structure
-    print("1. MCP Tool returns raw calculator structure:")
-    details = await client.get_calculator_details("cha2ds2-vasc")
-    print(f"   Fields needed: {[inp['name'] for inp in details['inputs']]}")
-    print(f"   Example field: {details['inputs'][0]}")  # Shows raw structure
+    # Playwright works in Cloud Run (chromium installed via Dockerfile)
+    await mdcalc_client.initialize()
     
-    # STEP 2: Claude queries health data (simulated here)
-    print("\n2. Claude queries health data:")
-    health_data = {
-        "age": 68,
-        "sex": "Female",
-        "diagnoses": ["Hypertension", "CHF with EF 42%", "Type 2 Diabetes"],
-        "labs": {"creatinine": 1.2},
-        "vitals": {"bp": "145/90"}
+    # Navigate and capture screenshot
+    details = await mdcalc_client.get_calculator_details(calculator_id)
+    
+    return {
+        "content": [{
+            "type": "text",
+            "text": f"Calculator: {details['title']}\nURL: {details['url']}"
+        }, {
+            "type": "image",
+            "data": details['screenshot_base64'],
+            "mimeType": "image/jpeg"
+        }]
     }
-    print(f"   Health data: {health_data}")
-    
-    # STEP 3: CLAUDE DOES THE INTELLIGENT MAPPING
-    print("\n3. Claude performs intelligent mapping:")
-    print("   - Age 68 → '65-74' (finds correct range)")
-    print("   - Female → sex: 'female' (normalizes)")
-    print("   - CHF with EF 42% → chf: true (interprets)")
-    print("   - Hypertension → hypertension: true (identifies)")
-    print("   - Type 2 Diabetes → diabetes: true (recognizes)")
-    print("   - No stroke in history → stroke: false (determines absence)")
-    
-    # This is what Claude produces after intelligent mapping:
-    claude_mapped_inputs = {
-        "age": "65-74",      # Claude selected correct range
-        "sex": "female",     # Claude normalized format
-        "chf": True,         # Claude identified from EF
-        "hypertension": True,  # Claude found diagnosis
-        "stroke": False,     # Claude determined absence
-        "vascular": False,   # Claude checked history
-        "diabetes": True     # Claude found diagnosis
-    }
-    
-    # STEP 4: Tool mechanically executes with Claude's values
-    print("\n4. MCP Tool executes with Claude's mapped values:")
-    result = await client.execute_calculator("cha2ds2-vasc", claude_mapped_inputs)
-    print(f"   Score: {result['score']}")
-    print(f"   Risk: {result['risk_category']}")
-    
-    await client.cleanup()
-    
-test_data_population_flow()
 ```
 
-#### Step 3: Test with Claude Desktop
+**Why this works:**
+- Dockerfile installs chromium: `playwright install --with-deps chromium`
+- Cloud Run provides sufficient memory (1Gi default, increase to 2Gi if needed)
+- Headless browser works in containerized environment
 
-Testing checklist for data population:
+---
 
-1. **Simple Mapping Test**:
-   ```
-   "Calculate HEART score for a 68-year-old patient"
-   ```
-   Verify Claude:
-   - Gets calculator details
-   - Maps age correctly
-   - Asks for missing required fields
+## Dependencies
 
-2. **Complex Mapping Test**:
-   ```
-   "My patient has chest pain, hypertension, diabetes, and hyperlipidemia. 
-   Latest troponin is 0.02. Calculate cardiac risk."
-   ```
-   Verify Claude:
-   - Counts risk factors (should be 3)
-   - Interprets troponin as "normal"
-   - Selects appropriate calculators
+### Minimal Requirements (requirements.txt)
 
-3. **Categorical Mapping Test**:
-   ```
-   "Calculate CHA2DS2-VASc. Patient is a 72-year-old woman with AFib, 
-   CHF (EF 38%), and well-controlled hypertension on lisinopril."
-   ```
-   Verify Claude:
-   - Maps age to "65-74" range
-   - Identifies CHF from EF
-   - Recognizes hypertension from medication
+```txt
+# FastAPI and server
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
 
-4. **Missing Data Test**:
-   ```
-   "Calculate SOFA score for my ICU patient"
-   ```
-   Verify Claude:
-   - Identifies all needed inputs
-   - Queries for missing values
-   - Handles unavailable data appropriately
+# OAuth validation
+python-jose[cryptography]==3.3.0
+httpx==0.27.0
 
-### Phase 5: Demo Preparation
-**Goal**: Create compelling demonstrations.
+# Configuration
+pydantic==2.9.0
+pydantic-settings==2.5.0
 
-Review `requirements/mdcalc-demo-scenarios.md` for complete demo scripts.
+# Your existing dependencies
+playwright==1.40.0
+
+# Utilities
+python-dotenv==1.0.0
+```
+
+**What we DON'T include (intentionally):**
+- ❌ `sse-starlette` - Not needed (simple HTTP POST works)
+- ❌ `slowapi` - Cloud Run handles rate limiting
+- ❌ `python-json-logger` - Cloud Run logs are already structured
+
+---
+
+## Environment Configuration
+
+### Local Development (.env)
+
+```bash
+AUTH0_DOMAIN=your-tenant.auth0.com
+AUTH0_API_AUDIENCE=http://localhost:8080
+AUTH0_ISSUER=https://your-tenant.auth0.com/
+MCP_SERVER_URL=http://localhost:8080
+PORT=8080
+```
+
+### Production (Cloud Run Environment Variables)
+
+```bash
+AUTH0_DOMAIN=your-tenant.auth0.com
+AUTH0_API_AUDIENCE=https://mdcalc-mcp-server-xyz.run.app
+AUTH0_ISSUER=https://your-tenant.auth0.com/
+MCP_SERVER_URL=https://mdcalc-mcp-server-xyz.run.app
+PORT=8080
+```
+
+---
+
+## Testing Strategy
+
+### 1. Local Testing (Before Deployment)
+
+```bash
+# Run server locally
+cd mcp-servers/mdcalc-automation-mcp
+python src/server.py
+
+# Test endpoints
+curl http://localhost:8080/health
+curl http://localhost:8080/.well-known/oauth-protected-resource
+```
+
+### 2. Cloud Run Testing (After Deployment)
+
+```bash
+SERVICE_URL=$(gcloud run services describe mdcalc-mcp-server \
+  --region us-central1 --format='value(status.url)')
+
+# Health check
+curl $SERVICE_URL/health
+
+# OAuth metadata
+curl $SERVICE_URL/.well-known/oauth-protected-resource
+
+# Protected endpoint (should return 401 without token)
+curl -X POST $SERVICE_URL/sse
+```
+
+### 3. End-to-End Testing (With Claude)
+
+**Via Claude Web:**
+1. Add connector in claude.ai
+2. Complete OAuth flow
+3. Test: "Search MDCalc for HEART score"
+
+**Via Claude Android:**
+1. Wait for sync (1-2 minutes)
+2. Enable connector in chat
+3. Voice: "Calculate Wells score"
+
+---
+
+## Troubleshooting
+
+### Common Issues & Solutions
+
+#### 1. "Unable to add connector"
+```bash
+# Verify OAuth metadata is accessible
+curl https://your-server.run.app/.well-known/oauth-protected-resource
+
+# Should return JSON with authorization_servers field
+```
+
+#### 2. "Dynamic Client Registration failed"
+```bash
+# Test DCR directly
+curl -X POST https://YOUR-TENANT.auth0.com/oidc/register \
+  -H "Content-Type: application/json" \
+  -d '{"client_name":"Test","redirect_uris":["https://localhost/callback"]}'
+
+# Should return client_id
+# If fails, DCR is not enabled in Auth0
+```
+
+#### 3. "401 Unauthorized" when calling tools
+```bash
+# Check Cloud Run logs
+gcloud run services logs read mdcalc-mcp-server \
+  --region us-central1 --limit 50
+
+# Verify Auth0 settings:
+# - Audience matches MCP_SERVER_URL exactly
+# - Issuer has trailing slash
+# - API scopes are defined
+```
+
+#### 4. Connector not appearing on Claude Android
+- Close and reopen Claude Android app
+- Wait 2 minutes for sync
+- Verify same Claude account on web and mobile
+- Check Claude Android version (update if needed)
+
+#### 5. "Token validation error"
+```bash
+# Verify JWKS is accessible
+curl https://YOUR-TENANT.auth0.com/.well-known/jwks.json
+
+# Should return public keys
+```
+
+---
+
+## Production Checklist
+
+### Before Going Live:
+
+- [ ] Auth0 DCR tested and working
+- [ ] OAuth metadata endpoint returns valid JSON
+- [ ] Token validation working (test with curl)
+- [ ] Cloud Run service deploys successfully
+- [ ] Health checks passing
+- [ ] Connector added and authorized in claude.ai
+- [ ] Tools working in Claude web interface
+- [ ] Tools synced to Claude Android
+- [ ] Voice commands working on mobile
+
+### Production Hardening:
+
+```bash
+# Custom domain (optional)
+gcloud run domain-mappings create \
+  --service mdcalc-mcp-server \
+  --domain mdcalc.yourdomain.com
+
+# Increase resources if needed
+gcloud run services update mdcalc-mcp-server \
+  --memory 2Gi \
+  --cpu 2
+
+# Keep warm to avoid cold starts
+gcloud run services update mdcalc-mcp-server \
+  --min-instances 1
+
+# Set up monitoring
+gcloud logging metrics create mcp_requests \
+  --log-filter='resource.type="cloud_run_revision"
+    AND resource.labels.service_name="mdcalc-mcp-server"'
+```
+
+---
+
+## Key Architecture Decisions
+
+### Why Auth0 (Not Google OAuth)?
+- ✅ Supports Dynamic Client Registration (RFC 7591)
+- ✅ Required by MCP spec for mobile clients
+- ❌ Google OAuth doesn't support DCR programmatically
+
+### Why Simple HTTP POST (Not True SSE)?
+- ✅ MCP spec supports both HTTP and SSE
+- ✅ Simpler implementation
+- ✅ Works perfectly for request-response pattern
+- ✅ No need for `sse-starlette` library
+
+### Why JSON-RPC 2.0?
+- ✅ Required by MCP specification
+- ✅ Standard protocol for RPC over HTTP
+- ✅ Claude expects this format
+
+### Why No Rate Limiting Library?
+- ✅ Cloud Run provides concurrency limits
+- ✅ Can set max concurrent requests
+- ✅ Auto-scales based on traffic
+- ✅ Application-level rate limiting is redundant
+
+---
+
+## Related Documentation
+
+### MCP Specification:
+- [MCP Spec June 2025](https://modelcontextprotocol.io/specification/2024-11-05/basic/authorization/)
+- [JSON-RPC 2.0](https://www.jsonrpc.org/specification)
+- [RFC 9728 - OAuth Protected Resource Metadata](https://datatracker.ietf.org/doc/html/rfc9728)
+- [RFC 7591 - Dynamic Client Registration](https://datatracker.ietf.org/doc/html/rfc7591)
+
+### Auth0 Documentation:
+- [Auth0 APIs](https://auth0.com/docs/api/management/v2)
+- [Dynamic Client Registration](https://auth0.com/docs/api/authentication#dynamic-client-registration)
+- [Token Validation](https://auth0.com/docs/secure/tokens/json-web-tokens/validate-json-web-tokens)
+
+### Google Cloud Run:
+- [Cloud Run Documentation](https://cloud.google.com/run/docs)
+- [Hosting MCP Servers](https://cloud.google.com/run/docs/host-mcp-servers)
+- [Environment Variables](https://cloud.google.com/run/docs/configuring/environment-variables)
+
+---
 
 ## Implementation Checklist
 
-### Phase 0: Recording & Discovery ✅ COMPLETED
-- [x] Create recording script (`record_interaction.py`)
-- [x] Add authentication support (manual_login.py)
-- [x] Record MDCalc interactions for key calculators
-- [x] Extract API endpoints from recordings
-- [x] Parse recordings to extract DOM selectors
-- [x] Deploy config to `mcp-servers/mdcalc-automation-mcp/src/mdcalc_config.json`
-- [x] Add recordings/ to .gitignore
+### Phase 6: Remote MCP Server Deployment
 
-### Phase 1: Foundation ✅ COMPLETED
-- [x] Set up Python virtual environment
-- [x] Install all dependencies (requirements.txt created)
-- [x] Verify health-analysis-server connection
-- [x] Test basic project structure
+- [ ] **Auth0 Setup**
+  - [ ] Create Auth0 account and tenant
+  - [ ] Enable Dynamic Client Registration
+  - [ ] Create API with scopes
+  - [ ] Test DCR endpoint
+  - [ ] Save credentials
 
-### Phase 2: Core Automation ✅ COMPLETED
-- [x] Implement `mdcalc_client.py` with screenshot capability
-- [x] Extract complete catalog of 825 calculators
-- [x] Test search functionality (working correctly)
-- [x] Test calculator execution (basic mechanics working)
-- [x] Create MCP server with 4 tools (list_all, search, get_calculator, execute)
+- [ ] **MCP Server Implementation**
+  - [ ] Create `src/server.py` with FastAPI
+  - [ ] Create `src/auth.py` for token validation
+  - [ ] Create `src/config.py` for configuration
+  - [ ] Update `requirements.txt`
+  - [ ] Create `Dockerfile`
+  - [ ] Create `.dockerignore`
 
-### Phase 3: Screenshot-Based Universal Support ✅ COMPLETED
-- [x] Implement screenshot capability (23KB optimized JPEGs)
-- [x] Update get_calculator_details to return screenshots
-- [x] Test screenshot with base64 encoding
-- [x] Update MCP server to include images in responses
-- [x] Document screenshot architecture
+- [ ] **Local Testing**
+  - [ ] Run server locally
+  - [ ] Test OAuth metadata endpoint
+  - [ ] Test health check
+  - [ ] Verify token validation
 
-### Phase 4: Testing & Integration 🔄 IN PROGRESS
-- [x] Create comprehensive test suite
-- [x] Test known calculators (HEART, LDL, CHA2DS2-VASc)
-- [x] Verify catalog completeness (825 calculators)
-- [ ] Test MCP server with catalog integration
-- [ ] Configure Claude Desktop
-- [ ] Test end-to-end with Claude
+- [ ] **Cloud Run Deployment**
+  - [ ] Enable required APIs
+  - [ ] Deploy to Cloud Run
+  - [ ] Update environment variables
+  - [ ] Update Auth0 with real URL
+  - [ ] Test deployed endpoints
 
-## Troubleshooting Guide
+- [ ] **Claude Configuration**
+  - [ ] Add connector in claude.ai
+  - [ ] Complete OAuth flow
+  - [ ] Test in Claude web
+  - [ ] Verify sync to Claude Android
 
-### Common Issues
+- [ ] **End-to-End Testing**
+  - [ ] Test voice commands
+  - [ ] Verify calculator execution
+  - [ ] Check Cloud Run logs
+  - [ ] Monitor performance
 
-**MCP server not starting:**
-```bash
-# Test directly
-python /Users/aju/Dropbox/Development/Git/09-22-25-mdcalc-agent-v2/mdcalc-agent/mcp-servers/mdcalc-automation-mcp/src/mdcalc_mcp.py
-```
+---
 
-**Selectors not working:**
-- Re-record the interaction
-- Set `headless=False` to watch execution
-- Use `page.pause()` for debugging
+## Success Metrics
 
-**Claude not finding tools:**
-- Restart Claude Desktop
-- Check claude_desktop_config.json syntax
-- Verify MCP server is running
+After successful deployment:
 
-## Key Success Factors
+### Functional Metrics:
+- ✅ MCP server accessible from Claude Android
+- ✅ OAuth authentication working end-to-end
+- ✅ Voice commands trigger correct tool calls
+- ✅ Calculator results returned within 5 seconds
+- ✅ Screenshot-based approach working on Cloud Run
 
-1. **Recording-First**: Always record before coding
-2. **Atomic Tools**: Keep MCP tools simple, let Claude orchestrate
-3. **Leverage Existing**: Use the working health MCP as-is
-4. **Test Incrementally**: Verify each phase before moving forward
-5. **Demo Focus**: Everything builds toward the demonstration
+### Technical Metrics:
+- Response time: <3s for tool calls
+- Cold start: <10s (eliminated with min-instances=1)
+- Error rate: <1%
+- Token validation: 100% success rate
+- Uptime: 99.9%
 
-## Current Progress & Next Steps
+---
 
-### Completed ✅
-1. **Phase 0 Recording Infrastructure**: All recording scripts created with authentication
-2. **Authentication Solution**: Manual login with session persistence implemented
-3. **Priority Calculator Recordings**: All 5 calculators recorded successfully
-4. **API Endpoint Discovery**: Identified key MDCalc API patterns
-5. **Architecture Clarification**: Established "Smart Agent, Dumb Tools" principle
+## Summary
 
-### Current Status 📊
+This guide transforms your local MDCalc MCP server into a remote, OAuth-secured service accessible via Claude Android voice commands.
 
-#### ✅ Completed Components
-- **Complete Calculator Catalog**: 825 calculators extracted and categorized
-- **Screenshot-Based Architecture**: Universal calculator support via 23KB JPEG screenshots
-- **MCP Server**: 4 production-ready tools (list_all, search, get_calculator, execute)
-- **Search Functionality**: Works correctly with MDCalc's search
-- **Test Framework**: Comprehensive test suite for all components
+**Key Points:**
+1. Follow `requirements/auth-requirements/REMOTE_MCP_DESIGN_SPEC.md` for implementation
+2. Existing MDCalc client logic remains mostly unchanged
+3. Agent instructions stay the same
+4. Authentication layer is new but straightforward
+5. Deploy to Google Cloud Run with minimal configuration
+6. Voice commands work exactly like desktop conversations
 
-#### 🚀 Ready for Production
-- All 825 MDCalc calculators accessible
-- Screenshot approach eliminates need for selector maintenance
-- Claude can understand ANY calculator visually
-- Intelligent category assignment across 16 medical specialties
-
-### Next Steps 📋
-
-#### Immediate:
-1. **Test MCP Server with Catalog**:
-   ```bash
-   python mcp-servers/mdcalc-automation-mcp/tests/test_mcp_server.py
-   ```
-   - Verify mdcalc_list_all returns 825 calculators
-   - Confirm search uses catalog correctly
-   - Test screenshot inclusion in responses
-
-2. **Configure Claude Desktop**:
-   - Add mdcalc-automation to claude_desktop_config.json
-   - Restart Claude Desktop
-   - Verify tools appear in Claude
-
-3. **End-to-End Testing**:
-   - Test Claude's visual understanding of calculators
-   - Verify intelligent data mapping
-   - Test multi-calculator synthesis
-
-### Key Implementation Notes
-
-**Authentication State**:
-Saved at `auth/mdcalc_auth_state.json` - reuse for all automation
-
-**Config Structure** (`mdcalc_config.json`):
-```json
-{
-  "selectors": {
-    "search": { /* search UI patterns */ },
-    "calculator": { /* form input patterns */ },
-    "results": { /* output patterns */ },
-    "navigation": { /* site nav patterns */ },
-    "calculator_ids": { /* known IDs */ }
-  },
-  "api_patterns": {
-    "search": "/api/v1/search",
-    "calculate": "/api/v1/calc/{id}/calculate"
-  },
-  "calculator_ids": {
-    "heart_score": "1752",
-    "cha2ds2_vasc": "10583",
-    "sofa": "691"
-  }
-}
-```
-
-**Critical Design Principle**:
-MCP tools must remain purely mechanical. ALL intelligence, interpretation, and clinical judgment happens in Claude. Tools just fill forms and return results.
-
-**Testing Focus**:
-Prioritize testing the data population flow - ensure Claude correctly:
-1. Interprets clinical data
-2. Maps values to calculator fields
-3. Handles missing data appropriately
-4. Synthesizes multiple calculator results
-
-Remember: The goal is a compelling demonstration that shows how conversational AI transforms medical calculator usage through intelligent data mapping and multi-calculator synthesis.
+**The goal:** Enable voice-based clinical calculator access on mobile while maintaining all desktop capabilities.
