@@ -665,45 +665,89 @@ gcloud logging metrics create mcp_requests \
 
 ### Phase 6: Remote MCP Server Deployment
 
-- [ ] **Auth0 Setup**
-  - [ ] Create Auth0 account and tenant
-  - [ ] Enable Dynamic Client Registration
-  - [ ] Create API with scopes
-  - [ ] Test DCR endpoint
-  - [ ] Save credentials
+- [x] **Auth0 Setup** ✅
+  - [x] Create Auth0 account and tenant
+  - [x] Enable Dynamic Client Registration
+  - [x] Create API with scopes (mdcalc:read, mdcalc:calculate)
+  - [x] Test DCR endpoint
+  - [x] Save credentials
 
-- [ ] **MCP Server Implementation**
-  - [ ] Create `src/server.py` with FastAPI
-  - [ ] Create `src/auth.py` for token validation
-  - [ ] Create `src/config.py` for configuration
-  - [ ] Update `requirements.txt`
-  - [ ] Create `Dockerfile`
-  - [ ] Create `.dockerignore`
+- [x] **MCP Server Implementation** ✅
+  - [x] Create `src/server.py` with FastAPI
+  - [x] Create `src/auth.py` for token validation
+  - [x] Create `src/config.py` for configuration
+  - [x] Update `requirements.txt`
+  - [x] Create `Dockerfile`
+  - [x] Create `.dockerignore`
 
-- [ ] **Local Testing**
-  - [ ] Run server locally
-  - [ ] Test OAuth metadata endpoint
-  - [ ] Test health check
-  - [ ] Verify token validation
+- [x] **Headless Mode Solution** ✅
+  - [x] Identified MDCalc blocks headless browsers
+  - [x] Solution: Use Chrome (not Chromium) + Authentication
+  - [x] Created manual login script with Firefox fallback
+  - [x] Saved auth state for headless access
+  - [x] Verified get_calculator and execute work in headless mode with auth
 
-- [ ] **Cloud Run Deployment**
+- [ ] **Fix Screenshot Timeout** 🔄
+  - [ ] Increase timeout or optimize selector
+  - [ ] Verify screenshots work consistently
+
+- [ ] **Cloud Run Deployment** 📋
   - [ ] Enable required APIs
-  - [ ] Deploy to Cloud Run
+  - [ ] Deploy to Cloud Run with auth state
   - [ ] Update environment variables
   - [ ] Update Auth0 with real URL
   - [ ] Test deployed endpoints
 
-- [ ] **Claude Configuration**
+- [ ] **Claude Configuration** 📋
   - [ ] Add connector in claude.ai
   - [ ] Complete OAuth flow
   - [ ] Test in Claude web
   - [ ] Verify sync to Claude Android
 
-- [ ] **End-to-End Testing**
+- [ ] **End-to-End Testing** 📋
   - [ ] Test voice commands
   - [ ] Verify calculator execution
   - [ ] Check Cloud Run logs
   - [ ] Monitor performance
+
+---
+
+## Key Learnings & Solutions
+
+### MDCalc Headless Browser Blocking
+
+**Problem**: MDCalc blocks ALL pages (homepage, calculator pages) when accessed from headless Chromium browsers.
+
+**Root Cause**:
+- Bot detection specifically targets headless browsers
+- Chromium (Playwright's default) is more easily detected than Chrome
+- Anonymous sessions trigger stricter bot detection
+
+**Solution** (2-part):
+1. **Use Chrome instead of Chromium** in headless mode:
+   ```python
+   browser = await playwright.chromium.launch(
+       headless=True,
+       channel="chrome"  # Key: Use real Chrome, not Chromium
+   )
+   ```
+
+2. **Use authenticated sessions**:
+   - Create auth state using Firefox (via `manual_login.py`)
+   - Load auth state in headless Chrome
+   - Authenticated users bypass strict bot detection
+
+**Implementation**: See `mcp-servers/mdcalc-automation-mcp/src/mdcalc_client.py` lines 126-144
+
+**Testing**: `mcp-servers/mdcalc-automation-mcp/tests/remote/test_headless_with_auth.py`
+
+### Cloud Run Requirements
+
+For headless mode on Cloud Run:
+1. Copy auth state to deployment
+2. Use Chrome channel (requires installing Chrome in Docker)
+3. Include auth state file in container
+4. Initialize with `use_auth=True`
 
 ---
 

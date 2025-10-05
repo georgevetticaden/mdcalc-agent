@@ -33,10 +33,17 @@ def manual_login():
     print("4. Press Enter here when you're logged in\n")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        # Try Firefox first as Chromium is crashing
+        try:
+            browser = p.firefox.launch(headless=False)
+            print("Using Firefox browser")
+        except Exception as e:
+            print(f"Firefox not available: {e}")
+            print("Trying Chromium...")
+            browser = p.chromium.launch(headless=False)
+
         context = browser.new_context(
-            viewport={'width': 1920, 'height': 1080},
-            user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120.0.0.0 Safari/537.36'
+            viewport={'width': 1920, 'height': 1080}
         )
         page = context.new_page()
 

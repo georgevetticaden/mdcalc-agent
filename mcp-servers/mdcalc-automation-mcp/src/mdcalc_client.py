@@ -122,10 +122,26 @@ class MDCalcClient:
                 )
         else:
             # Launch new browser (normal mode)
-            self.browser = await self.playwright.chromium.launch(
-                headless=headless,
-                args=['--disable-blink-features=AutomationControlled']
-            )
+            # Use Chrome channel in headless mode for better compatibility with MDCalc
+            if headless:
+                try:
+                    self.browser = await self.playwright.chromium.launch(
+                        headless=True,
+                        channel="chrome",  # Use real Chrome instead of Chromium
+                        args=['--disable-blink-features=AutomationControlled']
+                    )
+                    logger.info("Launched Chrome in headless mode")
+                except Exception as e:
+                    logger.warning(f"Chrome not available, falling back to Chromium: {e}")
+                    self.browser = await self.playwright.chromium.launch(
+                        headless=True,
+                        args=['--disable-blink-features=AutomationControlled']
+                    )
+            else:
+                self.browser = await self.playwright.chromium.launch(
+                    headless=False,
+                    args=['--disable-blink-features=AutomationControlled']
+                )
 
         # For demo mode with existing browser, try to reuse existing context
         if use_existing_browser:
